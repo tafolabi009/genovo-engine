@@ -615,6 +615,14 @@ impl WinitPlatform {
             .and_then(|wid| self.windows.get(wid))
             .map(|data| &data.window)
     }
+
+    /// Get a cloned Arc<Window> for use by the renderer.
+    ///
+    /// The renderer needs to own the window handle (for surface creation),
+    /// so we return a cloned Arc rather than a reference.
+    pub fn get_arc_window(&self, handle: WindowHandle) -> Option<Arc<Window>> {
+        self.get_window(handle).cloned()
+    }
 }
 
 impl Platform for WinitPlatform {

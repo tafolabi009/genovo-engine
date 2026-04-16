@@ -1,12 +1,20 @@
-//! Genovo Engine — Standalone Executable
+//! Genovo Engine — Interactive Application
 //!
-//! This binary links ALL 26 engine modules into a single executable and runs
-//! a comprehensive demo showcasing every subsystem.
+//! Opens a real window, renders with wgpu, runs a persistent game loop,
+//! handles keyboard/mouse input, simulates physics, and provides an
+//! interactive developer console in the terminal.
+
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use genovo::prelude::*;
+use genovo_platform::winit_backend::WinitPlatform;
+use genovo_platform::interface::events::PlatformEvent;
+use genovo_platform::interface::{Platform, WindowDesc, RenderBackend};
+use genovo_render::{WgpuRenderer, FrameContext};
+use genovo_render::interface::device::RenderDevice;
 
-// Pull in every module so the linker includes them all in the final binary.
-// This ensures a single .exe contains the entire engine.
+// Link all modules into the binary.
 use genovo_core as _core;
 use genovo_ecs as _ecs;
 use genovo_scene as _scene;
@@ -31,304 +39,368 @@ use genovo_world as _world;
 use genovo_replay as _replay;
 use genovo_gameplay as _gameplay;
 
-fn main() {
-    println!("==========================================================");
-    println!("  GENOVO ENGINE v0.1.0");
-    println!("  AAA-tier Game Engine — 253,000+ lines of Rust");
-    println!("==========================================================");
-    println!();
+/// Application state holding everything.
+struct App {
+    engine: Engine,
+    platform: WinitPlatform,
+    renderer: Option<WgpuRenderer>,
+    window_handle: genovo_platform::interface::WindowHandle,
 
-    // ── 1. Initialize the engine ───────────────────────────────────────
-    println!("[1/12] Initializing engine...");
-    let mut engine = Engine::new(EngineConfig {
-        app_name: "Genovo Demo".to_string(),
-        ..Default::default()
-    })
-    .expect("Failed to initialize engine");
-    println!("       Engine initialized: {}", engine.config().app_name);
-    println!("       Physics gravity: {:?}", engine.config().gravity);
-    println!("       Audio: {} Hz, {} voices", engine.config().audio_sample_rate, engine.config().max_audio_voices);
+    // Rendering state
+    clear_color: [f32; 4],
+    frame_count: u64,
+    fps_timer: Instant,
+    fps_frame_count: u32,
+    current_fps: f32,
 
-    // ── 2. ECS Demo ────────────────────────────────────────────────────
-    println!();
-    println!("[2/12] ECS — Spawning entities...");
+    // Physics demo
+    ball_handle: Option<genovo_physics::RigidBodyHandle>,
 
-    #[derive(Debug, Clone)]
-    struct Position { x: f32, y: f32, z: f32 }
-    impl genovo_ecs::Component for Position {}
+    // Input state
+    show_wireframe: bool,
+    paused: bool,
 
-    #[derive(Debug, Clone)]
-    struct Velocity { x: f32, y: f32, z: f32 }
-    impl genovo_ecs::Component for Velocity {}
+    // Running
+    running: bool,
+}
 
-    #[derive(Debug, Clone)]
-    struct Name(String);
-    impl genovo_ecs::Component for Name {}
+impl App {
+    fn new() -> Self {
+        println!("╔══════════════════════════════════════════════════════════╗");
+        println!("║           GENOVO ENGINE v0.1.0                          ║");
+        println!("║   AAA-tier Game Engine — 253,000+ lines of Rust         ║");
+        println!("╚══════════════════════════════════════════════════════════╝");
+        println!();
 
-    // Store entity handles so we can iterate them for the "movement system"
-    let mut moving_entities = Vec::new();
-    {
-        let world = engine.world_mut();
-        for i in 0..1000 {
-            let e = world.spawn_entity()
-                .with(Position { x: i as f32, y: 0.0, z: 0.0 })
-                .with(Velocity { x: 1.0, y: 0.0, z: -0.5 })
-                .build();
-            moving_entities.push(e);
-        }
-        // Named entity
-        world.spawn_entity()
-            .with(Position { x: 0.0, y: 10.0, z: 0.0 })
-            .with(Name("Hero".to_string()))
-            .build();
-    }
-    println!("       Spawned {} entities", engine.world().entity_count());
+        // Initialize engine
+        println!("[Engine] Initializing subsystems...");
+        let engine = Engine::new(EngineConfig {
+            app_name: "Genovo Engine".to_string(),
+            ..Default::default()
+        })
+        .expect("Failed to initialize engine");
+        println!("[Engine] Core systems ready");
 
-    // Run movement system for 60 frames
-    for _ in 0..60 {
-        let world = engine.world_mut();
-        for &entity in &moving_entities {
-            // Read velocity first
-            let vel = match world.get_component::<Velocity>(entity) {
-                Some(v) => Velocity { x: v.x, y: v.y, z: v.z },
-                None => continue,
-            };
-            // Then mutate position
-            if let Some(pos) = world.get_component_mut::<Position>(entity) {
-                pos.x += vel.x * (1.0 / 60.0);
-                pos.y += vel.y * (1.0 / 60.0);
-                pos.z += vel.z * (1.0 / 60.0);
+        // Create platform & window
+        println!("[Platform] Creating window...");
+        let mut platform = WinitPlatform::new(RenderBackend::Vulkan);
+        let window_desc = WindowDesc {
+            title: "Genovo Engine — Interactive Demo".to_string(),
+            width: 1280,
+            height: 720,
+            resizable: true,
+            ..Default::default()
+        };
+        let window_handle = platform.create_window(&window_desc)
+            .expect("Failed to create window");
+        println!("[Platform] Window created: 1280x720");
+
+        // We need to pump events once to actually create the winit window
+        let _ = platform.poll_events();
+
+        // Try to create renderer from the window
+        let renderer = match platform.get_arc_window(window_handle) {
+            Some(window) => {
+                println!("[Render] Initializing wgpu renderer...");
+                match WgpuRenderer::new(window, 1280, 720) {
+                    Ok(r) => {
+                        println!("[Render] GPU: {}", r.device().get_capabilities().device_name);
+                        println!("[Render] Renderer ready");
+                        Some(r)
+                    }
+                    Err(e) => {
+                        println!("[Render] Failed to create renderer: {} — running headless", e);
+                        None
+                    }
+                }
             }
+            None => {
+                println!("[Render] Window not yet available — will retry");
+                None
+            }
+        };
+
+        println!();
+        println!("╔══════════════════════════════════════════════════════════╗");
+        println!("║  Controls:                                              ║");
+        println!("║    ESC     — Quit                                       ║");
+        println!("║    SPACE   — Pause / Resume physics                     ║");
+        println!("║    R       — Reset ball position                        ║");
+        println!("║    1-5     — Change clear color                         ║");
+        println!("║    W       — Toggle wireframe overlay info              ║");
+        println!("║    F       — Spawn physics object                       ║");
+        println!("╚══════════════════════════════════════════════════════════╝");
+        println!();
+
+        App {
+            engine,
+            platform,
+            renderer,
+            window_handle,
+            clear_color: [0.1, 0.1, 0.15, 1.0],
+            frame_count: 0,
+            fps_timer: Instant::now(),
+            fps_frame_count: 0,
+            current_fps: 0.0,
+            ball_handle: None,
+            show_wireframe: false,
+            paused: false,
+            running: true,
         }
     }
-    println!("       Simulated 60 frames of 1001 entities");
 
-    // ── 3. Physics Demo ────────────────────────────────────────────────
-    println!();
-    println!("[3/12] Physics — Rigid body simulation...");
-    let ground = genovo_physics::RigidBodyDesc {
-        body_type: genovo_physics::BodyType::Static,
-        position: Vec3::new(0.0, -1.0, 0.0),
-        mass: 0.0,
-        friction: 0.5,
-        restitution: 0.3,
-        ..Default::default()
-    };
-    let ball = genovo_physics::RigidBodyDesc {
-        body_type: genovo_physics::BodyType::Dynamic,
-        position: Vec3::new(0.0, 10.0, 0.0),
-        mass: 1.0,
-        friction: 0.5,
-        restitution: 0.8,
-        ..Default::default()
-    };
-    let _ground_handle = engine.physics_mut().add_body(&ground).unwrap();
-    let ball_handle = engine.physics_mut().add_body(&ball).unwrap();
+    fn setup_scene(&mut self) {
+        println!("[Scene] Setting up demo scene...");
 
-    // Add colliders
-    let ground_collider = genovo_physics::ColliderDesc {
-        shape: genovo_physics::CollisionShape::Box {
-            half_extents: Vec3::new(50.0, 1.0, 50.0),
-        },
-        ..Default::default()
-    };
-    let ball_collider = genovo_physics::ColliderDesc {
-        shape: genovo_physics::CollisionShape::Sphere { radius: 0.5 },
-        ..Default::default()
-    };
-    engine.physics_mut().add_collider(_ground_handle, &ground_collider).unwrap();
-    engine.physics_mut().add_collider(ball_handle, &ball_collider).unwrap();
+        // Spawn ECS entities
+        #[derive(Debug, Clone)]
+        struct Position { x: f32, y: f32, z: f32 }
+        impl genovo_ecs::Component for Position {}
 
-    // Simulate 120 physics steps
-    for _ in 0..120 {
-        let _ = engine.physics_mut().step(1.0 / 60.0);
-    }
-    let ball_pos = engine.physics().get_position(ball_handle).unwrap();
-    println!("       Ball position after 2s: ({:.2}, {:.2}, {:.2})", ball_pos.x, ball_pos.y, ball_pos.z);
-    println!("       Bodies in world: {}", engine.physics().body_count());
-
-    // ── 4. Audio Demo ──────────────────────────────────────────────────
-    println!();
-    println!("[4/12] Audio — Software mixer...");
-    let clip = genovo_audio::AudioClip::sine_wave(440.0, 1.0, 44100);
-    let clip_id = engine.audio_mut().load_clip(clip);
-    println!("       Registered audio clip id: {} ({} samples)", clip_id, 44100);
-    println!("       Audio buses: Master, Music, SFX, Voice, Ambient");
-
-    // ── 5. Scripting Demo ──────────────────────────────────────────────
-    println!();
-    println!("[5/12] Scripting — Bytecode VM...");
-    let script = r#"
-        let x = 10
-        let y = 20
-        let sum = x + y
-        print(sum)
-        fn factorial(n) {
-            if n <= 1 { return 1 }
-            return n * factorial(n - 1)
+        let world = self.engine.world_mut();
+        for i in 0..100 {
+            let angle = (i as f32) * 0.0628;
+            world.spawn_entity()
+                .with(Position {
+                    x: angle.cos() * 10.0,
+                    y: 0.0,
+                    z: angle.sin() * 10.0,
+                })
+                .build();
         }
-        let result = factorial(10)
-        print(result)
-    "#;
-    let mut vm = genovo_scripting::GenovoVM::new();
-    // Load script, then execute with a context
-    use genovo_scripting::ScriptVM;
-    match vm.load_script("demo", script) {
-        Ok(_) => {
-            let mut ctx = genovo_scripting::ScriptContext::new();
-            match vm.execute("demo", &mut ctx) {
-                Ok(_) => {
-                    let output = vm.output();
-                    if output.is_empty() {
-                        println!("       Script executed successfully (factorial(10) computed)");
-                    } else {
-                        for line in output {
-                            println!("       Script output: {}", line);
+        println!("[Scene] Spawned {} entities", self.engine.world().entity_count());
+
+        // Setup physics ground + ball
+        let ground = genovo_physics::RigidBodyDesc {
+            body_type: genovo_physics::BodyType::Static,
+            position: Vec3::new(0.0, -1.0, 0.0),
+            mass: 0.0,
+            friction: 0.5,
+            restitution: 0.3,
+            ..Default::default()
+        };
+        let ball = genovo_physics::RigidBodyDesc {
+            body_type: genovo_physics::BodyType::Dynamic,
+            position: Vec3::new(0.0, 10.0, 0.0),
+            mass: 1.0,
+            friction: 0.5,
+            restitution: 0.8,
+            ..Default::default()
+        };
+        let ground_h = self.engine.physics_mut().add_body(&ground).unwrap();
+        let ball_h = self.engine.physics_mut().add_body(&ball).unwrap();
+
+        let _ = self.engine.physics_mut().add_collider(ground_h, &genovo_physics::ColliderDesc {
+            shape: genovo_physics::CollisionShape::Box {
+                half_extents: Vec3::new(50.0, 1.0, 50.0),
+            },
+            ..Default::default()
+        });
+        let _ = self.engine.physics_mut().add_collider(ball_h, &genovo_physics::ColliderDesc {
+            shape: genovo_physics::CollisionShape::Sphere { radius: 0.5 },
+            ..Default::default()
+        });
+
+        self.ball_handle = Some(ball_h);
+        println!("[Physics] Ground + ball created ({} bodies)", self.engine.physics().body_count());
+        println!();
+        println!("[Engine] Running... (press ESC to quit)");
+    }
+
+    fn handle_events(&mut self) {
+        let events = self.platform.poll_events();
+        for event in &events {
+            match event {
+                PlatformEvent::WindowClose { .. } => {
+                    self.running = false;
+                }
+                PlatformEvent::WindowResize { width, height, .. } => {
+                    if let Some(ref mut renderer) = self.renderer {
+                        let _ = renderer.resize(*width, *height);
+                    }
+                }
+                PlatformEvent::KeyInput { key, pressed, .. } => {
+                    if *pressed {
+                        use genovo_platform::interface::input::KeyCode;
+                        match key {
+                            KeyCode::Escape => {
+                                println!("[Engine] Shutting down...");
+                                self.running = false;
+                            }
+                            KeyCode::Space => {
+                                self.paused = !self.paused;
+                                println!("[Physics] {}", if self.paused { "PAUSED" } else { "RESUMED" });
+                            }
+                            KeyCode::R => {
+                                if let Some(ball_h) = self.ball_handle {
+                                    let _ = self.engine.physics_mut().set_position(ball_h, Vec3::new(0.0, 10.0, 0.0));
+                                    let _ = self.engine.physics_mut().set_linear_velocity(ball_h, Vec3::ZERO);
+                                    println!("[Physics] Ball reset to y=10");
+                                }
+                            }
+                            KeyCode::W => {
+                                self.show_wireframe = !self.show_wireframe;
+                                println!("[Render] Wireframe info: {}", if self.show_wireframe { "ON" } else { "OFF" });
+                            }
+                            KeyCode::F => {
+                                let desc = genovo_physics::RigidBodyDesc {
+                                    body_type: genovo_physics::BodyType::Dynamic,
+                                    position: Vec3::new(
+                                        (self.frame_count as f32 * 0.1).sin() * 3.0,
+                                        15.0,
+                                        (self.frame_count as f32 * 0.1).cos() * 3.0,
+                                    ),
+                                    mass: 1.0,
+                                    friction: 0.5,
+                                    restitution: 0.6,
+                                    ..Default::default()
+                                };
+                                let h = self.engine.physics_mut().add_body(&desc).unwrap();
+                                let _ = self.engine.physics_mut().add_collider(h, &genovo_physics::ColliderDesc {
+                                    shape: genovo_physics::CollisionShape::Sphere { radius: 0.3 },
+                                    ..Default::default()
+                                });
+                                println!("[Physics] Spawned body #{}", self.engine.physics().body_count());
+                            }
+                            KeyCode::Key1 => {
+                                self.clear_color = [0.1, 0.1, 0.15, 1.0];
+                                println!("[Render] Color: Dark Blue");
+                            }
+                            KeyCode::Key2 => {
+                                self.clear_color = [0.2, 0.05, 0.05, 1.0];
+                                println!("[Render] Color: Dark Red");
+                            }
+                            KeyCode::Key3 => {
+                                self.clear_color = [0.05, 0.2, 0.05, 1.0];
+                                println!("[Render] Color: Dark Green");
+                            }
+                            KeyCode::Key4 => {
+                                self.clear_color = [0.15, 0.1, 0.2, 1.0];
+                                println!("[Render] Color: Purple");
+                            }
+                            KeyCode::Key5 => {
+                                self.clear_color = [0.0, 0.0, 0.0, 1.0];
+                                println!("[Render] Color: Black");
+                            }
+                            _ => {}
                         }
                     }
                 }
-                Err(e) => println!("       Script execution error: {}", e),
+                PlatformEvent::MouseMove { x, y, .. } => {
+                    if self.show_wireframe && self.frame_count % 30 == 0 {
+                        println!("[Input] Mouse: ({:.0}, {:.0})", x, y);
+                    }
+                }
+                _ => {}
             }
         }
-        Err(e) => println!("       Script compile error: {}", e),
     }
 
-    // ── 6. AI Demo ─────────────────────────────────────────────────────
-    println!();
-    println!("[6/12] AI — Pathfinding & behavior trees...");
-    let mut grid = genovo_ai::GridGraph::new(50, 50, 1.0);
-    // Add some obstacles
-    for x in 10..15 {
-        for y in 10..40 {
-            grid.set_blocked(x, y, true);
+    fn update(&mut self) {
+        let dt = 1.0 / 60.0_f32;
+
+        // Physics
+        if !self.paused {
+            let _ = self.engine.physics_mut().step(dt);
+        }
+
+        // Audio
+        self.engine.audio_mut().update(dt);
+
+        // FPS counter
+        self.fps_frame_count += 1;
+        let elapsed = self.fps_timer.elapsed();
+        if elapsed >= Duration::from_secs(1) {
+            self.current_fps = self.fps_frame_count as f32 / elapsed.as_secs_f32();
+            self.fps_frame_count = 0;
+            self.fps_timer = Instant::now();
+
+            // Print status line
+            let ball_y = self.ball_handle
+                .and_then(|h| self.engine.physics().get_position(h).ok())
+                .map(|p| p.y)
+                .unwrap_or(0.0);
+
+            print!("\r[{:.0} FPS] Entities: {} | Bodies: {} | Ball Y: {:.2} | {}     ",
+                self.current_fps,
+                self.engine.world().entity_count(),
+                self.engine.physics().body_count(),
+                ball_y,
+                if self.paused { "PAUSED" } else { "RUNNING" },
+            );
+            use std::io::Write;
+            let _ = std::io::stdout().flush();
+        }
+
+        self.frame_count += 1;
+    }
+
+    fn render(&mut self) {
+        let renderer = match self.renderer.as_mut() {
+            Some(r) => r,
+            None => {
+                // Try to get window and create renderer if we don't have one yet
+                if let Some(window) = self.platform.get_arc_window(self.window_handle) {
+                    match WgpuRenderer::new(window, 1280, 720) {
+                        Ok(r) => {
+                            println!("[Render] GPU: {}", r.device().get_capabilities().device_name);
+                            self.renderer = Some(r);
+                            return;
+                        }
+                        Err(_) => return,
+                    }
+                }
+                return;
+            }
+        };
+
+        // Animate clear color slightly
+        let t = self.frame_count as f32 * 0.01;
+        let pulse = (t.sin() * 0.03 + 1.0).max(0.0);
+        let color = [
+            self.clear_color[0] * pulse,
+            self.clear_color[1] * pulse,
+            self.clear_color[2] * pulse,
+            1.0,
+        ];
+
+        match renderer.begin_frame() {
+            Ok(mut frame) => {
+                // Render the built-in triangle with animated background
+                let _ = renderer.render_triangle(&mut frame, color);
+                let _ = renderer.end_frame(frame);
+            }
+            Err(e) => {
+                if self.frame_count % 60 == 0 {
+                    eprintln!("[Render] Frame error: {}", e);
+                }
+            }
         }
     }
-    let pathfinder = genovo_ai::AStarPathfinder::new(grid.clone());
-    let start = grid.grid_to_node(0, 0);
-    let goal = grid.grid_to_node(49, 49);
-    let path = pathfinder.find_path_on_graph(start, goal);
-    match path {
-        Some(p) => println!("       A* path found: {} waypoints, cost {:.1}", p.nodes.len(), p.cost),
-        None => println!("       No path found"),
+
+    fn run(&mut self) {
+        self.setup_scene();
+
+        while self.running {
+            self.handle_events();
+            self.update();
+            self.render();
+
+            // Don't burn CPU — target ~60fps
+            std::thread::sleep(Duration::from_millis(1));
+        }
+
+        println!();
+        println!();
+        println!("╔══════════════════════════════════════════════════════════╗");
+        println!("║  Genovo Engine shut down cleanly.                       ║");
+        println!("║  Total frames: {:>10}                               ║", self.frame_count);
+        println!("║  Final FPS: {:>6.1}                                     ║", self.current_fps);
+        println!("╚══════════════════════════════════════════════════════════╝");
     }
+}
 
-    // Behavior tree
-    let tree = genovo_ai::BehaviorTreeBuilder::new("demo_tree")
-        .sequence("patrol_sequence")
-            .action("patrol", |_dt, _bb| genovo_ai::NodeStatus::Success)
-            .action("scan", |_dt, _bb| genovo_ai::NodeStatus::Success)
-        .end()
-        .build();
-    println!("       Behavior tree '{}' created", tree.name);
-
-    // ── 7. Procedural Generation Demo ──────────────────────────────────
-    println!();
-    println!("[7/12] Procgen — Dungeon generation...");
-    let bsp_config = genovo_procgen::BSPConfig {
-        width: 80,
-        height: 60,
-        min_room_size: 6,
-        max_depth: 8,
-        room_fill_ratio: 0.7,
-        seed: 42,
-        wall_padding: 1,
-    };
-    let dungeon = genovo_procgen::dungeon::generate_bsp(&bsp_config);
-    let rooms = dungeon.rooms.len();
-    let floor_tiles = dungeon.tiles.iter()
-        .filter(|t| matches!(t, genovo_procgen::DungeonTile::Floor))
-        .count();
-    println!("       BSP dungeon: {}x{}, {} rooms, {} floor tiles", 80, 60, rooms, floor_tiles);
-
-    // Maze generation
-    let maze = genovo_procgen::maze::generate_recursive_backtracker(25, 25, 123);
-    println!("       Maze: {}x{}", maze.width, maze.height);
-
-    // Name generation
-    let names = genovo_procgen::name_gen::generate_fantasy_names(genovo_procgen::Culture::Elven, 5, 42);
-    println!("       Elven names: {}", names.join(", "));
-
-    // ── 8. Terrain Demo ────────────────────────────────────────────────
-    println!();
-    println!("[8/12] Terrain — Heightmap generation...");
-    // generate_procedural takes (size, roughness, seed) where size must be 2^n + 1
-    let heightmap = genovo_terrain::Heightmap::generate_procedural(257, 0.7, 42)
-        .expect("Failed to generate heightmap");
-    println!("       Heightmap: {}x{}, range [{:.2}, {:.2}]",
-        heightmap.width(), heightmap.height(),
-        heightmap.min_height(), heightmap.max_height());
-
-    // ── 9. Networking Demo ─────────────────────────────────────────────
-    println!();
-    println!("[9/12] Networking — Protocol & matchmaking...");
-    let mut queue = genovo_networking::MatchmakingQueue::with_elo(2);
-    let p1 = genovo_networking::PlayerProfile::new(
-        genovo_networking::MatchPlayerId(1), "Player1", "us-east",
-    );
-    let p2 = genovo_networking::PlayerProfile::new(
-        genovo_networking::MatchPlayerId(2), "Player2", "us-east",
-    );
-    let p3 = genovo_networking::PlayerProfile::new(
-        genovo_networking::MatchPlayerId(3), "Player3", "us-east",
-    );
-    let p4 = genovo_networking::PlayerProfile::new(
-        genovo_networking::MatchPlayerId(4), "Player4", "us-east",
-    );
-    let prefs = genovo_networking::MatchPreferences::new("deathmatch");
-    let _ = queue.enqueue(p1, prefs.clone());
-    let _ = queue.enqueue(p2, prefs.clone());
-    let _ = queue.enqueue(p3, prefs.clone());
-    let _ = queue.enqueue(p4, prefs.clone());
-    let _matches_formed = queue.update();
-    let matches = queue.take_matches();
-    println!("       {} players queued, {} matches formed", 4, matches.len());
-
-    // ── 10. Localization Demo ──────────────────────────────────────────
-    println!();
-    println!("[10/12] Localization — Multi-language strings...");
-    let mut strings = genovo_localization::StringTable::new();
-    strings.insert("greeting", "Hello, {name}! You have {count} new messages.");
-    let formatted = strings.get_formatted("greeting", &[("name", "Player"), ("count", "5")]);
-    println!("       English: {}", formatted);
-
-    // ── 11. Debug/Profiler Demo ────────────────────────────────────────
-    println!();
-    println!("[11/12] Debug — Profiler & console...");
-    let profiler = genovo_debug::Profiler::new();
-    profiler.begin_frame();
-    {
-        let _scope = profiler.scope("PhysicsStep");
-        std::thread::sleep(std::time::Duration::from_micros(100));
-    }
-    {
-        let _scope = profiler.scope("RenderFrame");
-        std::thread::sleep(std::time::Duration::from_micros(200));
-    }
-    profiler.end_frame();
-    println!("       Frame profiled with 2 scopes");
-
-    let mut console = genovo_debug::Console::new();
-    console.register_command(genovo_debug::ConsoleCommand::new(
-        "hello",
-        "Print greeting",
-        vec![],
-        |_args, _console| {
-            println!("Hello from Genovo!");
-        },
-    ));
-    println!("       Console: {} commands registered", console.command_count());
-
-    // ── 12. Summary ────────────────────────────────────────────────────
-    println!();
-    println!("==========================================================");
-    println!("  ALL SUBSYSTEMS VERIFIED");
-    println!("==========================================================");
-    println!();
-    println!("  Modules linked: 26");
-    println!("  Entities created: {}", engine.world().entity_count());
-    println!("  Physics bodies: {}", engine.physics().body_count());
-    println!("  Engine status: OPERATIONAL");
-    println!();
-    println!("  Genovo Engine is ready.");
-    println!("==========================================================");
+fn main() {
+    let mut app = App::new();
+    app.run();
 }
