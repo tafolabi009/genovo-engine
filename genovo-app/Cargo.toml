@@ -40,5 +40,6 @@ egui = "0.31"
 egui-wgpu = "0.31"
 egui-winit = "0.31"
 egui_plot = "0.31"
+# egui_dock = "0.16"  # not available offline — using egui panels instead
 env_logger = "0.11"
 pollster = "0.4"
