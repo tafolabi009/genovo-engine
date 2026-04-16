@@ -29,6 +29,7 @@ members = [
     "tests/integration",
     "tests/benchmarks",
     "examples",
+    "genovo-app",
 ]
 
 [workspace.package]

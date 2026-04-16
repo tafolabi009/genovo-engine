@@ -20,6 +20,7 @@ Cargo.lock
 *.swp
 *.swo
 *~
+Claude.md
 
 # OS
 .DS_Store

@@ -1,0 +1,36 @@
+[package]
+name = "genovo-app"
+version.workspace = true
+edition.workspace = true
+description = "Genovo Engine - standalone executable linking all 26 engine modules"
+
+[[bin]]
+name = "genovo"
+path = "src/main.rs"
+
+[dependencies]
+genovo = { workspace = true }
+genovo-core = { workspace = true }
+genovo-ecs = { workspace = true }
+genovo-scene = { workspace = true }
+genovo-render = { workspace = true }
+genovo-platform = { workspace = true }
+genovo-physics = { workspace = true }
+genovo-audio = { workspace = true }
+genovo-animation = { workspace = true }
+genovo-assets = { workspace = true }
+genovo-scripting = { workspace = true }
+genovo-networking = { workspace = true }
+genovo-ai = { workspace = true }
+genovo-editor = { workspace = true }
+genovo-ui = { workspace = true }
+genovo-debug = { workspace = true }
+genovo-save = { workspace = true }
+genovo-cinematics = { workspace = true }
+genovo-localization = { workspace = true }
+genovo-terrain = { workspace = true }
+genovo-procgen = { workspace = true }
+genovo-world = { workspace = true }
+genovo-replay = { workspace = true }
+genovo-gameplay = { workspace = true }
+log = { workspace = true }
