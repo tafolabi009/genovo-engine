@@ -34,3 +34,11 @@ genovo-world = { workspace = true }
 genovo-replay = { workspace = true }
 genovo-gameplay = { workspace = true }
 log = { workspace = true }
+winit = { workspace = true }
+wgpu = { workspace = true }
+egui = "0.31"
+egui-wgpu = "0.31"
+egui-winit = "0.31"
+egui_plot = "0.31"
+env_logger = "0.11"
+pollster = "0.4"
