@@ -1,0 +1,12 @@
+[package]
+name = "genovo-localization"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+genovo-core = { workspace = true }
+log = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+parking_lot = { workspace = true }

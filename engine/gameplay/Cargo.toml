@@ -1,0 +1,13 @@
+[package]
+name = "genovo-gameplay"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+genovo-core = { workspace = true }
+genovo-ecs = { workspace = true }
+glam = { workspace = true }
+log = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+parking_lot = { workspace = true }

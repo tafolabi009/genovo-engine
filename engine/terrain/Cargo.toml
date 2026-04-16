@@ -1,0 +1,16 @@
+[package]
+name = "genovo-terrain"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+genovo-core = { workspace = true }
+genovo-ecs = { workspace = true }
+genovo-render = { workspace = true }
+glam = { workspace = true }
+log = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+bytemuck = { workspace = true }
+parking_lot = { workspace = true }
+profiling = { workspace = true }

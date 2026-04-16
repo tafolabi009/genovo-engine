@@ -1,0 +1,13 @@
+[package]
+name = "genovo-integration-tests"
+version.workspace = true
+edition.workspace = true
+
+[dev-dependencies]
+genovo-core = { workspace = true }
+genovo-ecs = { workspace = true }
+genovo-render = { workspace = true }
+genovo-scene = { workspace = true }
+genovo-platform = { workspace = true }
+genovo-physics = { workspace = true }
+genovo-assets = { workspace = true }

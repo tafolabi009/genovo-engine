@@ -1,0 +1,13 @@
+[package]
+name = "genovo-ui"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+genovo-core = { workspace = true }
+genovo-render = { workspace = true }
+glam = { workspace = true }
+log = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+parking_lot = { workspace = true }

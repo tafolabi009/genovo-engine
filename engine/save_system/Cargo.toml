@@ -1,0 +1,13 @@
+[package]
+name = "genovo-save"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+genovo-core = { workspace = true }
+genovo-ecs = { workspace = true }
+log = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }

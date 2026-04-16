@@ -1,0 +1,38 @@
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# C++ build artifacts
+/build/
+/cmake-build-*/
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.lib
+*.exe
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Engine artifacts
+/cooked_assets/
+/shader_cache/
+/logs/
+*.spv
+*.dxil
+*.metallib
+
+# Secrets / platform SDKs
+*.env
+sdk/

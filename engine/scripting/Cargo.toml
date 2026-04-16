@@ -1,0 +1,10 @@
+[package]
+name = "genovo-scripting"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+genovo-core = { workspace = true }
+genovo-ecs = { workspace = true }
+log = { workspace = true }
+thiserror = { workspace = true }

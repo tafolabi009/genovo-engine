@@ -1,0 +1,17 @@
+[package]
+name = "genovo-ffi"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+genovo-core = { workspace = true }
+genovo-ecs = { workspace = true }
+genovo-physics = { workspace = true }
+genovo-audio = { workspace = true }
+log = { workspace = true }
+
+[build-dependencies]
+cbindgen = "0.27"

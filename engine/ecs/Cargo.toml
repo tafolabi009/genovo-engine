@@ -1,0 +1,7 @@
+[package]
+name = "genovo-ecs"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+genovo-core = { workspace = true }

@@ -1,0 +1,81 @@
+//! # Genovo UI
+//!
+//! A complete immediate-mode-inspired retained UI framework for the Genovo game
+//! engine. Provides a layout engine, a rich widget library, text shaping and
+//! rendering, a styling/theming system, UI animations, and backend-agnostic draw
+//! command generation.
+//!
+//! # Architecture
+//!
+//! ```text
+//!  Widgets  -->  UITree  -->  LayoutEngine  -->  DrawList  -->  UIRenderer
+//!     ^             |              |                               (backend)
+//!     |          UIEvent      StyleSheet
+//!     +-- user code / scripting
+//! ```
+//!
+//! All coordinates are in logical pixels. The renderer backend is responsible
+//! for DPI scaling when submitting GPU commands.
+
+pub mod animation;
+pub mod core;
+pub mod layout;
+pub mod render_commands;
+pub mod style;
+pub mod text;
+pub mod widgets;
+
+// ---------------------------------------------------------------------------
+// Re-exports
+// ---------------------------------------------------------------------------
+
+pub use crate::core::{
+    Anchor, Margin, Padding, UIContext, UIEvent, UIEventHandler, UIId, UINode, UITree,
+};
+pub use animation::{
+    AnimationGroup, AnimationSequence, EasingFunction, SpringAnimation, UIAnimation,
+};
+pub use layout::{
+    Constraint, FlexLayout, GridLayout, LayoutAlign, LayoutDirection, LayoutEngine,
+    ScrollLayout, Size, StackLayout,
+};
+pub use render_commands::{DrawCommand, DrawList, UIRenderer};
+pub use style::{PseudoState, Style, StyleSheet, Theme, ThemeManager, Transition};
+pub use text::{Font, FontAtlas, FontLibrary, GlyphRun, ShapedText, TextLayout, TextMeasurement};
+pub use widgets::*;
+
+// ---------------------------------------------------------------------------
+// Error type
+// ---------------------------------------------------------------------------
+
+/// Errors produced by the UI crate.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum UIError {
+    /// A UI node was not found by its identifier.
+    #[error("UI node not found: {0:?}")]
+    NodeNotFound(UIId),
+
+    /// Layout computation failed.
+    #[error("layout error: {0}")]
+    LayoutError(String),
+
+    /// A font could not be loaded or parsed.
+    #[error("font error: {0}")]
+    FontError(String),
+
+    /// A style property was invalid.
+    #[error("style error: {0}")]
+    StyleError(String),
+
+    /// An animation parameter was invalid.
+    #[error("animation error: {0}")]
+    AnimationError(String),
+
+    /// A widget-specific error.
+    #[error("widget error: {0}")]
+    WidgetError(String),
+}
+
+/// Convenience alias.
+pub type UIResult<T> = Result<T, UIError>;

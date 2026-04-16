@@ -1,0 +1,105 @@
+[workspace]
+resolver = "2"
+members = [
+    "engine/genovo",
+    "engine/core",
+    "engine/ecs",
+    "engine/scene",
+    "engine/render",
+    "engine/platform",
+    "engine/physics",
+    "engine/audio",
+    "engine/animation",
+    "engine/assets",
+    "engine/scripting",
+    "engine/networking",
+    "engine/ai",
+    "engine/editor",
+    "engine/ui",
+    "engine/debug",
+    "engine/save_system",
+    "engine/cinematics",
+    "engine/localization",
+    "engine/terrain",
+    "engine/procgen",
+    "engine/world",
+    "engine/replay",
+    "engine/gameplay",
+    "crates/genovo-ffi",
+    "tests/integration",
+    "tests/benchmarks",
+    "examples",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+authors = ["Genovo Engine Team"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/genovo/genovo-engine"
+rust-version = "1.85"
+
+[workspace.dependencies]
+# Internal crates
+genovo-core = { path = "engine/core" }
+genovo-ecs = { path = "engine/ecs" }
+genovo-scene = { path = "engine/scene" }
+genovo-render = { path = "engine/render" }
+genovo-platform = { path = "engine/platform" }
+genovo-physics = { path = "engine/physics" }
+genovo-audio = { path = "engine/audio" }
+genovo-animation = { path = "engine/animation" }
+genovo-assets = { path = "engine/assets" }
+genovo-scripting = { path = "engine/scripting" }
+genovo-networking = { path = "engine/networking" }
+genovo-ai = { path = "engine/ai" }
+genovo-editor = { path = "engine/editor" }
+genovo-debug = { path = "engine/debug" }
+genovo-save = { path = "engine/save_system" }
+genovo-ui = { path = "engine/ui" }
+genovo-cinematics = { path = "engine/cinematics" }
+genovo-localization = { path = "engine/localization" }
+genovo-terrain = { path = "engine/terrain" }
+genovo-procgen = { path = "engine/procgen" }
+genovo-world = { path = "engine/world" }
+genovo-replay = { path = "engine/replay" }
+genovo-gameplay = { path = "engine/gameplay" }
+genovo-ffi = { path = "crates/genovo-ffi" }
+genovo = { path = "engine/genovo" }
+
+# External dependencies
+log = "0.4"
+thiserror = "2"
+bitflags = "2"
+parking_lot = "0.12"
+crossbeam = "0.8"
+rayon = "1.10"
+smallvec = "1"
+bytemuck = { version = "1", features = ["derive"] }
+raw-window-handle = "0.6"
+winit = "0.30"
+ash = "0.38"               # Vulkan bindings
+gpu-allocator = "0.27"
+wgpu = "24"
+glam = { version = "0.29", features = ["bytemuck", "serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ron = "0.8"
+uuid = { version = "1", features = ["v4", "serde"] }
+profiling = "1"
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"
+
+[profile.release-with-debug]
+inherits = "release"
+debug = true
+strip = "none"

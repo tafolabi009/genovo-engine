@@ -1,0 +1,16 @@
+[package]
+name = "genovo-examples"
+version.workspace = true
+edition.workspace = true
+
+[[example]]
+name = "hello_triangle"
+path = "hello_triangle.rs"
+
+[[example]]
+name = "ecs_demo"
+path = "ecs_demo.rs"
+
+[dependencies]
+genovo = { workspace = true }
+log = { workspace = true }

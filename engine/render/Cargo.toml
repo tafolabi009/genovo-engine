@@ -1,0 +1,29 @@
+[package]
+name = "genovo-render"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+genovo-core = { workspace = true }
+genovo-ecs = { workspace = true }
+log = { workspace = true }
+thiserror = { workspace = true }
+bitflags = { workspace = true }
+raw-window-handle = { workspace = true }
+# ash and gpu-allocator are no longer needed: the Vulkan backend now
+# delegates to wgpu which handles raw Vulkan API calls internally.
+# ash = { workspace = true, optional = true }
+# gpu-allocator = { workspace = true, optional = true }
+wgpu = { workspace = true }
+pollster = "0.4"
+bytemuck = { workspace = true }
+glam = { workspace = true }
+parking_lot = { workspace = true }
+smallvec = { workspace = true }
+profiling = { workspace = true }
+
+[features]
+default = ["vulkan"]
+vulkan = []
+dx12 = []
+metal = []
