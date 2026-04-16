@@ -70,6 +70,11 @@ pub mod upscaling;
 pub mod subsurface;
 pub mod hair;
 
+// Runtime material system, visual shader graph, and texture streaming.
+pub mod material_system;
+pub mod shader_graph;
+pub mod texture_streaming;
+
 // ---------------------------------------------------------------------------
 // Re-exports
 // ---------------------------------------------------------------------------

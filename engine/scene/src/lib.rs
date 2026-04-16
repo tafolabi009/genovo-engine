@@ -14,6 +14,7 @@
 pub mod ecs_bridge;
 pub mod node;
 pub mod prefab;
+pub mod scene_serializer;
 pub mod transform;
 
 // Re-exports for ergonomic use.
@@ -25,5 +26,9 @@ pub use node::{
 pub use prefab::{
     ComponentOverride, Prefab, PrefabError, PrefabId, PrefabInstance, PrefabNodeDescriptor,
     PrefabRegistry,
+};
+pub use scene_serializer::{
+    DiffChange, SceneDiff, SceneSerializer, SerializedComponent, SerializedEntity,
+    SerializedScene, SerializedValue,
 };
 pub use transform::{GlobalTransform, TransformComponent, TransformHierarchy, TransformSystem};

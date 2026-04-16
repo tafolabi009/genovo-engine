@@ -18,6 +18,7 @@ pub mod plugin;
 pub mod random;
 pub mod reflection;
 pub mod serialization;
+pub mod type_registry;
 pub mod simd;
 pub mod spatial;
 pub mod threading;

@@ -22,11 +22,14 @@ pub mod commands;
 pub mod component;
 pub mod entity;
 pub mod event;
+pub mod observer;
 pub mod query;
+pub mod relations;
 pub mod resource;
 pub mod schedule;
 pub mod system;
 pub mod world;
+pub mod world_query;
 
 // Re-exports for ergonomic use from downstream crates.
 pub use component::{Component, ComponentId, ComponentStorage};
@@ -44,5 +47,15 @@ pub use query::{
     And, FilteredQueryIter, Has, Or, QueryBuilder, QueryFilter, QueryIter, QueryState,
     QueryStateIter, With, Without,
 };
+pub use observer::{
+    EventCollector, LifecycleEvent, LifecycleEventKind, Observer, ObserverFlushSystem,
+    ObserverId, ObserverRegistry, OnAdd, OnChange, OnRemove,
+};
+pub use relations::{ChildOf, Relation, RelationEdge, RelationId, RelationKind, RelationManager};
 pub use resource::{Res, ResMut, ResourceTicks};
 pub use schedule::{RunCriteria, Schedule, Stage, SystemAccess, SystemDescriptor, SystemSet};
+pub use world_query::{
+    AccessMode, AnyOf, AnyOfMarker, CompiledQuery, ComponentAccess, EntityMut, EntityRef,
+    FilterDescriptor, JoinedQuery, Optional, QueryRow, QuerySnapshot, WorldQueryBuilder,
+    WorldQueryBuilderBound,
+};
