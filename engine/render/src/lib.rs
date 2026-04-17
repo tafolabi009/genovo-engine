@@ -289,6 +289,43 @@ pub mod mesh_merger;
 pub mod scene_renderer;
 
 // ---------------------------------------------------------------------------
+// GPU rendering feature modules -- real wgpu pipelines with WGSL shaders.
+// ---------------------------------------------------------------------------
+
+// GPU texture sampling: texture manager, mipmap generation, normal/PBR maps,
+// textured PBR pipeline with albedo/normal/metallic-roughness/emissive/AO.
+pub mod gpu_texture_sampling;
+
+// GPU shadow maps: depth-only shadow pass, cascaded shadow maps (4 cascades),
+// PCF 3x3 soft shadows, directional/point/spot light shadows, bias control.
+pub mod gpu_shadow_maps;
+
+// GPU post-processing: bloom (bright/downsample/upsample/composite), FXAA,
+// tone mapping (ACES/Reinhard/Uncharted2), vignette, chromatic aberration,
+// film grain -- all as fullscreen WGSL shader passes.
+pub mod gpu_post_process;
+
+// GPU skeletal animation: skinned vertex shader (LBS), dual quaternion skinning,
+// bone palette storage buffer, morph target compute shader, animation playback.
+pub mod gpu_skeletal;
+
+// GPU instanced rendering: per-instance storage buffer, instanced vertex shader,
+// frustum culling, LOD per instance, foliage/grass wind animation.
+pub mod gpu_instancing;
+
+// GPU particle rendering: billboard vertex shader, soft particles, sprite sheet
+// animation, additive/alpha blending, velocity-stretched billboards, sorting.
+pub mod gpu_particles_render;
+
+// GPU terrain rendering: heightmap-displaced vertex shader, triplanar mapping,
+// splatmap material blending, clipmap LOD, detail textures, distance fog.
+pub mod gpu_terrain_render;
+
+// GPU environment maps and sky: procedural atmospheric scattering sky, cubemap
+// sky rendering, irradiance convolution, specular prefilter, BRDF LUT, IBL.
+pub mod gpu_environment;
+
+// ---------------------------------------------------------------------------
 // Additional rendering subsystems (batch 6)
 // ---------------------------------------------------------------------------
 
