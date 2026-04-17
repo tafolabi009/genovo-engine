@@ -45,6 +45,16 @@ pub mod thread_pool;
 // arena scope with RAII, alignment handling, memory tracking.
 pub mod memory_arena;
 
+// Enhanced profiling: GPU timestamp queries, nested scope tree, flame graph data
+// export, per-system averages over N frames, automatic hotspot alerts, memory
+// allocation tracking per scope.
+pub mod profiling_v2;
+
+// Additional data structures: skip list, B-tree, trie (prefix tree), bloom filter,
+// count-min sketch, disjoint set (union-find with path compression), LRU cache,
+// concurrent queue.
+pub mod data_structures;
+
 // Re-export the most commonly used items at the crate root for ergonomic access.
 pub use color::{Color, ColorStop, Gradient};
 pub use curve::{AnimationCurve, BezierCurve, BSpline, CatmullRomSpline, CurveKeyframe, CurveMode};

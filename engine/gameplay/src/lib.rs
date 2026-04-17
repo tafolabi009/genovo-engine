@@ -87,6 +87,31 @@ pub mod save_game_v2;
 // cancel windows, combo tree, frame-perfect inputs, input buffer, combo counter.
 pub mod input_combo;
 
+// Enhanced inventory: grid-based inventory (items occupy WxH cells like Diablo),
+// auto-sort/compact, item categories, item comparison tooltips, equipment set bonuses,
+// item durability repair.
+pub mod inventory_v2;
+
+// NPC management: NPC schedules (daily routines), NPC spawning/despawning,
+// NPC merchant with inventory, NPC dialogue triggers, NPC pathfinding integration,
+// NPC animations, NPC barks, NPC relationships.
+pub mod npc_system;
+
+// Mission/objective system: main missions + side missions, mission chains,
+// mission waypoints, mission timer, mission rating (bronze/silver/gold),
+// mission replay, mission rewards scaling.
+pub mod mission_system;
+
+// Gameplay particle presets: blood splatter, dust cloud, explosion VFX,
+// magic spell effects, healing aura, shield bubble, footstep dust,
+// water splash, fire/smoke, electricity.
+pub mod particle_effects;
+
+// Environmental hazards: lava, quicksand, toxic gas, radiation, extreme cold,
+// underwater pressure, fall damage, electricity, fire spread,
+// hazard zones with damage-over-time.
+pub mod environmental_hazards;
+
 // ---------------------------------------------------------------------------
 // Re-exports: character controller
 // ---------------------------------------------------------------------------

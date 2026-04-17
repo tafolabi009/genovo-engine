@@ -121,6 +121,24 @@ pub mod physics_world_v2;
 // layer filter, contact point generation, time of impact.
 pub mod shape_casting;
 
+// Conveyor belts/moving surfaces: surface velocity applied to contacting bodies,
+// configurable direction and speed, belt sections, acceleration zones, curved conveyors.
+pub mod conveyor;
+
+// Explosion physics: radial impulse from point, damage falloff with distance,
+// shrapnel generation, blast wave (expanding sphere of force), explosion queries
+// (what's in radius), crater formation.
+pub mod explosion;
+
+// Rendering interpolation: store previous+current physics state, interpolate for
+// rendering at sub-timestep, smooth position/rotation interpolation, extrapolation.
+pub mod physics_interpolation;
+
+// Compound collision shapes: multiple primitive shapes combined into one body,
+// per-shape material, per-shape collision layer, efficient bounding volume,
+// shape adding/removing at runtime.
+pub mod compound_shapes;
+
 // Re-exports for ergonomic top-level access.
 pub use collision::{
     ColliderDesc, CollisionEvent, CollisionLayer, CollisionMask, CollisionShape, ContactManifold,

@@ -38,6 +38,21 @@ pub mod emotion_model;
 // predictive position estimation, exposure analysis, defensive position scoring.
 pub mod spatial_awareness;
 
+// Enhanced behavior trees: utility-scored selectors (hybrid utility+BT),
+// decorator: cooldown/limit/timeout/probability/force-success/force-fail,
+// subtree references, shared blackboard across trees, runtime BT debugging data.
+pub mod behavior_tree_v2;
+
+// AI world representation: simplified world state for planning, spatial occupancy
+// grid, threat map, resource locations, ally positions, objective importance,
+// environmental conditions.
+pub mod world_model;
+
+// AI conversation: multi-participant dialogue, turn-taking, interruption,
+// topic switching, memory of previous conversations, relationship changes
+// during dialogue, bartering/persuasion/intimidation skill checks.
+pub mod conversation;
+
 pub use behavior_trees::{
     ActionNode, BehaviorContext, BehaviorNode, BehaviorTree, BehaviorTreeAsset,
     BehaviorTreeBuilder, Blackboard, ConditionDecorator, ConditionNode, Cooldown, Inverter,
