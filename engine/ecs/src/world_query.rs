@@ -937,7 +937,7 @@ impl QuerySnapshot {
     }
 
     /// Iterate the snapshot's entities, yielding `QueryRow`s.
-    pub fn iter<'w>(&self, world: &'w World) -> SnapshotIter<'w> {
+    pub fn iter<'w>(&'w self, world: &'w World) -> SnapshotIter<'w> {
         SnapshotIter {
             world,
             entities: &self.entities,

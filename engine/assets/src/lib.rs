@@ -17,6 +17,7 @@ pub mod database;
 pub mod font;
 pub mod formats;
 pub mod gltf;
+pub mod hot_reload;
 pub mod image;
 pub mod loader;
 pub mod material;
@@ -43,4 +44,8 @@ pub use font::{FontData, FontLoader, GlyphOutline, GlyphPoint, HMetric, Position
 pub use material::{MaterialAlphaMode, MaterialAsset, MaterialLoader};
 pub use scene_format::{
     ComponentData, SceneAsset, SceneEntity, SceneLoader, SceneSettings, TransformData,
+};
+pub use hot_reload::{
+    AssetReloadEvent, AssetType, FileChangeInfo, FileWatcher, HotReloadManager, HotReloadStats,
+    WatchedFile,
 };

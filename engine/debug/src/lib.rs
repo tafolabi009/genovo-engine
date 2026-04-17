@@ -14,6 +14,7 @@
 pub mod analytics;
 pub mod console;
 pub mod debug_render;
+pub mod gizmos;
 pub mod memory_profiler;
 pub mod profiler;
 
@@ -24,6 +25,10 @@ pub use analytics::{
 };
 pub use console::{Console, ConsoleCommand, ConsoleVar, ConsoleVarValue};
 pub use debug_render::{Color, DebugRenderer, DebugVertex, DepthMode};
+pub use gizmos::{
+    ColliderShape, GizmoBatch, GizmoColor, GizmoDepthMode, GizmoLabel, GizmoVertex, Gizmos,
+    GizmosComponent,
+};
 pub use memory_profiler::{MemoryCategory, MemoryProfiler, MemoryReport};
 pub use profiler::{
     ProfileFrame, ProfileNode, ProfileReport, ProfileScope, Profiler, ScopeGuard,

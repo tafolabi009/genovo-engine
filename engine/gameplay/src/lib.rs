@@ -33,6 +33,7 @@ pub mod inventory;
 pub mod progression;
 pub mod quest_system;
 pub mod spawner;
+pub mod state_machine;
 
 // ---------------------------------------------------------------------------
 // Re-exports: character controller
@@ -141,4 +142,14 @@ pub use ability_system::{
 pub use interaction::{
     DialogueTrigger, Door, Interactable, InteractionEvent, InteractionSystem, InteractionType,
     Pickup, Switch,
+};
+
+// ---------------------------------------------------------------------------
+// Re-exports: state_machine
+// ---------------------------------------------------------------------------
+
+pub use state_machine::{
+    AnyStateMachine, GameEvent, GameState, HistoryMode, State, StateMachine, StateMachineBuilder,
+    StateMachineComponent, TimedTransition, Transition, TransitionResult,
+    create_game_state_machine,
 };

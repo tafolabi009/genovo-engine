@@ -54,11 +54,13 @@ pub mod deferred;
 pub mod mesh;
 pub mod camera_system;
 
-// Sky, atmosphere, ocean, and GPU compute modules.
+// Sky, atmosphere, ocean, water, and GPU compute modules.
 pub mod atmosphere;
 pub mod compute;
+pub mod gpu_particles;
 pub mod ocean;
 pub mod sky;
+pub mod water;
 
 // Lumen-style software ray tracing, virtual shadow maps, and unified GI.
 pub mod raytracing;

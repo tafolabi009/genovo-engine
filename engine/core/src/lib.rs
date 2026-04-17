@@ -11,6 +11,7 @@ pub mod compression;
 pub mod crypto;
 pub mod curve;
 pub mod error;
+pub mod event_bus;
 pub mod geometry;
 pub mod handle;
 pub mod intersect;
@@ -53,6 +54,11 @@ pub use compression::{
     DeltaEncoder, HuffmanCoder, HuffmanTable, LZ4Compressor, RunLengthEncoder,
 };
 pub use crypto::{Aes128, Crc32, Crc32Hasher, Hmac, Sha256, Sha256Hasher};
+pub use event_bus::{
+    AppLifecycleEvent, CollisionEvent, EntityDespawned, EntitySpawned, Event, EventBus,
+    EventBusStats, EventId, KeyModifiers, KeyPressed, KeyReleased, PhysicsStep, SceneLoaded,
+    SceneUnloading, SubscriberId, WindowResized,
+};
 
 /// Unique identifier for engine objects.
 pub type ObjectId = uuid::Uuid;
