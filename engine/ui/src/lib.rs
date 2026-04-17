@@ -18,16 +18,20 @@
 //! for DPI scaling when submitting GPU commands.
 
 pub mod animation;
+pub mod brush_system;
 pub mod core;
 pub mod data_binding;
+pub mod dock_system;
 pub mod drag_drop;
 pub mod editor_widgets;
 pub mod gpu_renderer;
 pub mod layout;
 pub mod render_commands;
+pub mod retained_widgets;
 pub mod rich_text;
 pub mod style;
 pub mod text;
+pub mod ui_animation;
 pub mod ui_framework;
 pub mod widgets;
 
@@ -68,6 +72,24 @@ pub use rich_text::{
 };
 pub use gpu_renderer::UIGpuRenderer;
 pub use ui_framework::{UI, UIInputState, UIStyle, WidgetId};
+pub use dock_system::{
+    DockArea, DockEvent, DockLayout, DockNode, DockNodeId, DockState, DockStyle, DockTab,
+    DockTabId, DockTarget, FloatingWindow, SplitDirection,
+};
+pub use retained_widgets::{
+    ButtonWidget, EventReply, InvalidateReason, LabelWidget, MouseEvent as WidgetMouseEvent,
+    KeyEvent as WidgetKeyEvent, PaintCanvas, PanelWidget, StackLayoutWidget, Widget,
+    WidgetEvent, WidgetTree, WidgetId as RetainedWidgetId,
+};
+pub use brush_system::{
+    Brush, BrushMargin, BrushTextStyle, ButtonStyle, CheckboxStyle, CornerRadius, GradientDir,
+    InputStyle, PanelStyle, ScrollbarStyle, SliderStyle, StyleManager, StyleSet, TabStyle,
+    TextOutline, TextShadow, TilingMode, TooltipStyle, TreeViewStyle,
+};
+pub use ui_animation::{
+    AnimatedValue, AnimationController, AnimPresets, CurveHandle, CurveSequence, EasingKind,
+    Lerp, PlaybackState, TransformAnimation, WidgetSpring, WidgetSpring2D,
+};
 
 // ---------------------------------------------------------------------------
 // Error type
