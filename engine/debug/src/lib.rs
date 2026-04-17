@@ -40,14 +40,6 @@ pub use command_system::{
     CheatFlags, CommandArg, CommandArgDef, CommandCategory, CommandDef, CommandId, CommandMacro,
     CommandResult, CommandSystem, KeyBinding, KeyModifiers,
 };
-// In-game debug menu: category tree, cvar display/edit, performance graphs,
-// memory breakdown, entity inspector, cheat commands.
-pub mod debug_menu;
-
-// Crash handling: panic hook, stack trace capture, minidump generation stub,
-// crash log with system info, auto-save on crash.
-pub mod crash_reporter;
-
 pub use screen_logger::{
     CategoryFilter, LogCategory, LogOverlayConfig, LogSeverity, OverlayPosition,
     ScreenLogMessage, ScreenLogger, ScreenLoggerStats, ScreenshotCapture, ScreenshotFormat,

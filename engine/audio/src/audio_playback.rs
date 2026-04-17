@@ -372,7 +372,8 @@ impl AudioPlaybackManager {
         for voice in &mut self.voices {
             if voice.state == VoiceState::Playing || voice.state == VoiceState::FadingIn || voice.state == VoiceState::FadingOut {
                 voice.elapsed += dt as f64 * voice.pitch as f64;
-                if let Some(p) = voice.position {
+                if voice.position.is_some() {
+                    let p = voice.position.unwrap();
                     let dx = p[0] - self.listener_position[0];
                     let dy = p[1] - self.listener_position[1];
                     let dz = p[2] - self.listener_position[2];

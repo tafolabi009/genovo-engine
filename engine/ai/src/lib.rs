@@ -28,7 +28,7 @@ pub mod utility_ai;
 
 // HTN (Hierarchical Task Network) planner: compound tasks decompose into primitives,
 // methods with preconditions, plan search with backtracking, partial plan execution.
-pub mod planner;
+pub mod planner_v2;
 
 // AI emotions: PAD model (Pleasure/Arousal/Dominance), emotion decay, triggers,
 // emotion-to-behavior mapping, facial expression output, mood persistence.
@@ -41,7 +41,7 @@ pub mod spatial_awareness;
 // Enhanced behavior trees: utility-scored selectors (hybrid utility+BT),
 // decorator: cooldown/limit/timeout/probability/force-success/force-fail,
 // subtree references, shared blackboard across trees, runtime BT debugging data.
-pub mod behavior_tree;
+pub mod behavior_tree_v2;
 
 // AI world representation: simplified world state for planning, spatial occupancy
 // grid, threat map, resource locations, ally positions, objective importance,
@@ -82,41 +82,9 @@ pub mod ai_debug;
 // interruption priority, dialogue cooldown, subtitled/voiced/bark modes,
 // dialogue events for gameplay triggers.
 pub mod dialogue_manager;
-n// Navmesh generation from geometry: voxelize, filter walkable,
-// distance field, contour tracing, polygon mesh, regions.
-pub mod navmesh_builder;
-
-// Central AI system: manage agents, tick perception/decision/action,
-// LOD AI, AI pooling, group management.
-pub mod ai_system;
-
-// BT runtime: optimized tick execution, parallel node evaluation, decorator
-// stacking, sub-tree instancing, memory pool for nodes.
-pub mod behavior_tree_runtime;
-
-// Enhanced blackboard: typed keys, blackboard sharing between AI agents,
-// blackboard observers (notify on change), blackboard persistence,
-// time-stamped entries with automatic expiry, hierarchical blackboard.
-pub mod blackboard;
-
-// Goal-driven AI: goal priorities, goal selection, goal decomposition into
-// tasks, goal completion tracking, concurrent goals, dynamic re-prioritization.
-pub mod goal_system;
-
-// Enhanced pathfinding: Jump Point Search, theta* (any-angle), flow field
-// pathfinding, hierarchical decomposition, dynamic replanning.
-pub mod pathfinding;
-
-// Enhanced perception: team knowledge sharing, threat assessment scoring,
-// target prioritization, visibility prediction, last-known-position prediction.
-pub mod ai_perception;
-
-// Common AI behaviors: patrol, guard, investigate, chase, flee, hide, search,
-// wander, follow, escort, ambush -- all as reusable behavior subtrees.
-pub mod ai_behaviors;
 
 // Re-exports for enhanced behavior trees.
-pub use behavior_tree::{
+pub use behavior_tree_v2::{
     BehaviorTreeV2, BtDecorator, BtLibrary, BtNodeId, BtNodeType, BtNodeV2,
     BtStatus, DecoratorType, SharedBlackboard, UtilityConsideration,
     UtilityCurve, UtilityScore,

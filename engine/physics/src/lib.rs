@@ -53,7 +53,7 @@
 //!   partial degradation, chain-breaking propagation, fatigue stress accumulation
 //! - **Physics layers** (`physics_layers`): 32-layer collision filtering, collision
 //!   matrix, per-body layer assignment, raycast/trigger layer filtering, presets
-//! - **PBD Fluid v2** (`particles`): position-based fluid dynamics with XSPH
+//! - **PBD Fluid v2** (`particles_v2`): position-based fluid dynamics with XSPH
 //!   viscosity, incompressibility constraint, vorticity confinement, surface
 //!   reconstruction, boundary particle handling
 //!
@@ -68,7 +68,7 @@
 //!   stall modeling, parachute drag, glider physics, paper airplane tumble
 //! - **Wind system** (`wind_system`): directional wind, periodic/random gusts,
 //!   turbulence zones, Beaufort scale presets, spatial wind field sampling
-//! - **Advanced fracture** (`fracture`): runtime mesh fracture, stress propagation,
+//! - **Advanced fracture** (`fracture_v2`): runtime mesh fracture, stress propagation,
 //!   crack initiation/propagation, fragment mass/inertia, multi-material support
 //! - **Physics debug** (`physics_debug`): collision shape wireframes, contact points/
 //!   normals, joint axes/limits, velocity arrows, broadphase grid, constraint errors
@@ -90,13 +90,13 @@ pub mod continuous_collision;
 pub mod destruction;
 pub mod dynamics;
 pub mod fluid;
-pub mod fracture;
+pub mod fracture_v2;
 pub mod gravity_field;
 pub mod interface;
 pub mod magnetic_field;
 pub mod motor_joint;
 pub mod particle_physics;
-pub mod particles;
+pub mod particles_v2;
 pub mod physics_debug;
 pub mod physics_materials;
 pub mod physics_layers;
@@ -115,7 +115,7 @@ pub mod collision_events;
 
 // Enhanced physics world: sub-worlds, physics islands, sleeping island optimization,
 // broad-phase switching (SAP/grid/BVH), narrow-phase cache, constraint groups.
-pub mod physics_world;
+pub mod physics_world_v2;
 
 // Shape cast queries: convex shape sweep, box sweep, capsule sweep, sphere sweep,
 // layer filter, contact point generation, time of impact.
@@ -145,7 +145,7 @@ pub mod heightfield_collision;
 
 // Extended physics queries: shape overlap, closest point, contact test,
 // sweep with filter, query batching, result caching.
-pub mod physics_queries;
+pub mod physics_queries_v2;
 
 // Joint lifecycle management: create/destroy/enable/disable joints,
 // joint iteration, joint queries by body, breaking detection, events.
@@ -166,7 +166,7 @@ pub mod joint_motors;
 
 // Advanced collision filtering: collision groups, collision masks per shape,
 // ignore pairs, temporary ignore (duration-based), collision rules engine.
-pub mod collision_filters;
+pub mod collision_filters_v2;
 
 // Physics state serialization: save/load entire physics world state, body
 // positions/velocities, joint states, constraint states, deterministic replay.
@@ -187,55 +187,6 @@ pub mod contact_solver;
 // Polytope Algorithm) for penetration depth, GJK distance query, Minkowski
 // portal refinement, margin-based collision (GJK+EPA with margins).
 pub mod collision_geometry;
-n// Sweep-and-prune broadphase: sorted endpoint lists per axis, incremental
-// update, pair management with add/remove callbacks, collision layers.
-pub mod broadphase_sap;
-
-// Narrowphase collision: dispatch by shape pair, contact manifolds,
-// persistent contacts with caching, GJK+EPA fallback.
-pub mod narrowphase;
-
-// Island-based solving: union-find grouping, per-island sequential impulse,
-// skip sleeping islands, warm-starting.
-pub mod solver_islands;
-
-// Production GJK+EPA v2: Minkowski difference, simplex cases
-// (point/line/triangle/tetrahedron), EPA polytope expansion, contact normal
-// and depth, support function dispatch, margin-based collision.
-pub mod gjk_epa;
-
-// Constraint framework: generic constraint interface, velocity constraints,
-// position constraints, pre-step (compute effective mass), solve (apply
-// impulse), warm start, sequential impulse solver.
-pub mod constraint_system;
-
-// Body lifecycle: create/destroy bodies with generational handles, body pool,
-// activation/deactivation (sleeping), body queries, integration, iteration.
-pub mod body_manager;
-
-// ---------------------------------------------------------------------------
-// Additional physics subsystems (batch 3)
-// ---------------------------------------------------------------------------
-
-// Enhanced collision: persistent contact manifold, contact reduction,
-// speculative contacts, one-shot manifold generation, warm starting cache.
-pub mod collision_detection;
-
-// Enhanced soft body: position-based dynamics, shape matching, volume
-// preservation, attachment to rigid bodies, cutting/tearing, GPU simulation.
-pub mod soft_body;
-
-// Physics debug rendering v2: contact points with normals, constraint limits,
-// body velocity arrows, sleep state indicators, broadphase cells.
-pub mod physics_debug;
-
-// World queries: closest body, bodies in AABB, ray vs specific body,
-// shape vs shape distance, time of impact.
-pub mod physics_world_query;
-
-// Enhanced solver: position-level constraints, XPBD, compliance matrix,
-// small-angle approximation, stable stacking.
-pub mod constraint_solver;
 
 // Re-exports for ergonomic top-level access.
 pub use collision::{
@@ -305,7 +256,7 @@ pub use wind_system::{
     BeaufortScale, GustPattern, TurbulenceZone, WindField, WindReceiverComponent,
     WindSample, WindSettings, WindSource, WindSourceComponent, WindSourceId,
 };
-pub use fracture::{
+pub use fracture_v2::{
     CrackNetwork, CrackPattern, CrackSegment, FracturableComponent, FractureConfig,
     FractureEvent, FractureManager, FractureMaterial, FractureMeshV2, FractureSound,
     FractureSystem, Fragment, StressField,
@@ -338,25 +289,8 @@ pub use physics_layers::{
     BuiltinLayer, CollisionMatrix, LayerFilter, LayerGroup, LayerGroupManager,
     PhysicsLayerComponent, PhysicsLayerSystem, TriggerLayerFilter,
 };
-pub use particles::{
+pub use particles_v2::{
     BoundaryParticle, FluidParticle, FluidParticleComponent as FluidParticleComponentV2,
     FluidSettingsV2, FluidSimulationV2, FluidSimStats,
     SpatialHashGrid as FluidSpatialHash, SurfaceInfo,
-};
-
-// Precision physics: deterministic simulation with fixed-point math, precision
-// constraint solver with shock propagation, sports ball physics (Magnus effect,
-// Reynolds-dependent drag, spin, bounce), soft contact modeling, character body,
-// advanced vehicle physics (tire temperature, load transfer, differentials),
-// and determinism verification tools.
-pub mod precision_physics;
-
-pub use precision_physics::{
-    BallConfig, BallState, CharacterBody, ContactConstraint, DesyncInfo,
-    DeterministicPhysics, DeterminismVerifier, DifferentialType,
-    FixedFloat, FixedVec3, ForcedInduction, LimbCapsule,
-    PhysicsBodyState, PrecisionSolver, ReplayEntry, SoftContact,
-    SoftContactMaterial, SolverBody, SolverConfig, SolverStats,
-    SportPhysics, SportPhysicsStats, StateHash, TireStateV2,
-    Vec3Phys, VehicleConfigV2, VehiclePhysicsV2, VehicleStateV2,
 };

@@ -1,22 +1,5 @@
 //! Robust undo/redo system for the editor.
 //!
-//! # Integration TODO (Genovo Studio)
-//!
-//! The editor app (`genovo-app/src/main.rs`) currently tracks `undo_count` /
-//! `redo_count` as plain integers but does not own an `UndoStack` instance.
-//! To wire up real undo/redo:
-//!
-//! 1. Add an `undo_stack: UndoStack` field to the app's editor state struct.
-//! 2. When the user performs a transform gizmo drag, property edit, or
-//!    hierarchy change, push the corresponding `Operation` (e.g.
-//!    `MoveEntityOp`, `ChangeComponentOp`) via `undo_stack.push(op, true)`.
-//! 3. Bind Ctrl+Z to `undo_stack.undo()` and Ctrl+Y / Ctrl+Shift+Z to
-//!    `undo_stack.redo()`.
-//! 4. Replace the `undo_count` / `redo_count` UI display with
-//!    `undo_stack.undo_count()` / `undo_stack.redo_count()`.
-//! 5. Optionally register `undo_stack.set_on_change(...)` to update the UI
-//!    title bar or status bar whenever the stack changes.
-//!
 //! Provides a stack-based undo/redo mechanism with support for:
 //!
 //! - **Operation trait** — reversible operations with `execute` and `undo`.

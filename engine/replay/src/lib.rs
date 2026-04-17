@@ -20,10 +20,6 @@ pub use replay_compression::{
     BitReader, BitWriter, CompressedReplayStream, CompressionError, FrameDelta,
     InputChangeTracker, InputDelta, QuantizationPrecision, ReplaySizeAnalysis,
 };
-// Enhanced replay: bookmark system, highlight detection, replay export,
-// replay sharing, replay analysis (stats), cinematic replay mode.
-pub mod replay_system;
-
 pub use replay_camera::{
     CameraMode, CameraTransform, DirectedCameraSequence, EasingFunction, FollowCamera,
     FreeCamera, OrbitCamera, PipViewport, PlaybackSpeedController, ReplayCameraController,

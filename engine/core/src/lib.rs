@@ -8,14 +8,6 @@
 pub mod collections;
 pub mod color;
 pub mod compression;
-
-// Centralized input: keyboard/mouse/gamepad polling, action mapping,
-// axis mapping with dead zones, input consumed flag, input recording.
-pub mod input_system;
-
-// Engine runtime: subsystem lifecycle, fixed timestep + variable render,
-// spiral-of-death protection, shutdown sequence, frame timing.
-pub mod engine_runtime;
 pub mod crypto;
 pub mod curve;
 pub mod error;
@@ -33,7 +25,7 @@ pub mod serialization;
 pub mod type_registry;
 pub mod simd;
 pub mod spatial;
-pub mod pool_allocator;
+pub mod pool_allocator_v2;
 pub mod string_utils;
 pub mod task_scheduler;
 pub mod threading;
@@ -43,7 +35,7 @@ pub mod config_system;
 pub mod math_extended;
 pub mod object_model;
 pub mod signal_slot;
-pub mod state_machine;
+pub mod state_machine_v2;
 
 // Thread pool: configurable worker count, task queue with priority, work stealing,
 // thread affinity, thread naming, idle callbacks, graceful shutdown, pool statistics.
@@ -56,7 +48,7 @@ pub mod memory_arena;
 // Enhanced profiling: GPU timestamp queries, nested scope tree, flame graph data
 // export, per-system averages over N frames, automatic hotspot alerts, memory
 // allocation tracking per scope.
-pub mod profiling;
+pub mod profiling_v2;
 
 // Additional data structures: skip list, B-tree, trie (prefix tree), bloom filter,
 // count-min sketch, disjoint set (union-find with path compression), LRU cache,
@@ -80,7 +72,7 @@ pub mod debug_draw;
 pub mod version;
 
 // Re-exports for new profiling types.
-pub use profiling::{
+pub use profiling_v2::{
     AlertSeverity as ProfileAlertSeverity, FlameGraphEntry, FrameProfile,
     HotspotAlert, ProfileScope, ProfilerV2, ScopeAverage, ScopeId,
 };
@@ -121,7 +113,7 @@ pub use event_bus::{
     EventBusStats, EventId, KeyModifiers, KeyPressed, KeyReleased, PhysicsStep, SceneLoaded,
     SceneUnloading, SubscriberId, WindowResized,
 };
-pub use pool_allocator::{
+pub use pool_allocator_v2::{
     AllocError, AllocHandle, AllocResult, AllocationCategory, AllocationRecord,
     AllocatorStats, CategoryBudget, DefragMove, DefragPlan, LeakDetector,
     PoolAllocatorV2, ScopedAllocator, SourceLocation,
@@ -161,23 +153,9 @@ pub use object_model::{
 pub use signal_slot::{
     ConnectionGuard, ConnectionId, ConnectionType, SharedSignal, Signal, SignalMap,
 };
-pub use state_machine::{
+pub use state_machine_v2::{
     ClosureState, ContextValue, HistoryEntry, ParallelStateMachine, State,
     StateContext, StateData, StateId, StateMachine, TimedState, Transition,
-};
-
-// 64-bit large world coordinates: floating origin, world cell grid, streaming
-// volumes, world bounds, multi-system LOD, sector-based simulation rates.
-pub mod large_world;
-
-pub use large_world::{
-    AudioLODQuality, CellCoord3D, CellLoadState, LODEntity, LODLevel, LODSystem,
-    LODSystemStats, LODThresholds, LargeWorldSystem, LargeWorldUpdateResult,
-    RebaseEvent, Sector, SectorManager, SectorManagerConfig, SectorManagerStats,
-    SectorTier, StreamingPriority, StreamingVolume, StreamingVolumeEvent,
-    StreamingVolumeManager, StreamingVolumeShape, WorldBounds, WorldCell,
-    WorldCellConfig, WorldCellGrid, WorldCellGridStats, WorldOrigin,
-    WorldPosition,
 };
 
 // Structured logging: log levels (Trace/Debug/Info/Warn/Error), log targets
@@ -189,14 +167,6 @@ pub mod logging;
 // Resource lifecycle management: reference-counted resources, dependency
 // tracking, unload when refcount=0, resource reload, resource events
 // (loaded/unloaded/error), resource statistics.
-// Asset references: typed handles, weak refs, load-on-demand,
-// dependency tracking, hot-reload notification.
-pub mod asset_ref;
-
-// Main engine loop: fixed timestep, variable render, frame pacing,
-// vsync, smoothing, spiral-of-death protection.
-pub mod engine_loop;
-
 pub mod resource_manager;
 
 // Platform detection: OS name/version, CPU model/cores/features, GPU info
@@ -204,43 +174,10 @@ pub mod resource_manager;
 // rate), storage info, build configuration (debug/release).
 pub mod platform_info;
 
-// Per-frame allocator: bump allocator reset each frame, typed allocation,
-// arena with destructor, frame-scoped collections (Vec, scratch buffer),
-// multi-frame ring buffer allocator.
-pub mod frame_allocator;
-
-// Engine-optimized HashMap: open addressing, Robin Hood hashing, power-of-2
-// sizing, FxHash (Fibonacci hashing), backward-shift deletion, FastHashSet.
-pub mod hash_map_fast;
-
 // Engine console commands: cvar system (typed console variables), command
 // registration with help text, argument parsing, autocomplete, cvar
 // persistence to config file, cvar change callbacks, built-in engine cvars.
 pub mod console_commands;
 
-// Engine configuration: rendering settings, physics settings, audio settings,
-// network settings, quality presets, per-platform defaults.
-pub mod engine_config;
-
-// Performance tracking: CPU/GPU frame time, per-system timing, memory usage,
-// allocation rate, GC pressure, performance budget system.
-pub mod performance_counters;
-
-// Command buffer pattern: deferred commands, command recording, command replay,
-// command serialization for networking, command undo.
-pub mod command_buffer;
-
 /// Unique identifier for engine objects.
 pub type ObjectId = uuid::Uuid;
-
-// Re-exports for input system.
-pub use input_system::{
-    AxisMapping, GamepadAxis, GamepadButton, InputSystem, KeyBinding, KeyCode,
-    MouseButton, RecordedEvent, RecordedInput,
-};
-
-// Re-exports for engine runtime.
-pub use engine_runtime::{
-    EngineRuntime, FrameTiming, RuntimeConfig, RuntimeStats, SubsystemId,
-    SubsystemRecord, SubsystemState,
-};

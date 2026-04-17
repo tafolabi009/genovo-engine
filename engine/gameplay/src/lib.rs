@@ -28,11 +28,11 @@
 //! | [`economy`]              | Currencies, shops, auctions, supply/demand pricing |
 //! | [`faction_system`]       | Factions, reputation, territory, inter-faction relations |
 //! | [`building_system`]      | Placeable structures, grid snapping, structural integrity |
-//! | [`crafting`]           | Advanced crafting: recipes, quality tiers, enchanting |
+//! | [`crafting_v2`]           | Advanced crafting: recipes, quality tiers, enchanting |
 //! | [`minimap`]              | Minimap with fog of war, markers, and zoom controls |
 //! | [`stealth_system`]       | Visibility, noise, disguises, AI search patterns |
 //! | [`scoring`]              | Points, combos, streaks, leaderboards, MVP calculation |
-//! | [`dialogue`]          | Ink-style dialogue engine with variables and barks |
+//! | [`dialogue_v2`]          | Ink-style dialogue engine with variables and barks |
 //! | [`cooking_system`]       | Cooking/alchemy with recipes, buffs, and discovery |
 //! | [`mount_system`]         | Mountable creatures with stamina, taming, combat |
 //! | [`day_night_cycle`]      | Day/night with sun, moon, sky, NPC schedules |
@@ -45,17 +45,13 @@ pub mod ai_director;
 pub mod building_system;
 pub mod camera_controller;
 pub mod character_controller;
-
-// Game world: unified container for ECS + physics + scene graph with
-// high-level spawn/despawn/query API and tick updates.
-pub mod game_world;
 pub mod companion_ai;
 pub mod cooking_system;
-pub mod crafting;
+pub mod crafting_v2;
 pub mod damage_system;
 pub mod day_night_cycle;
 pub mod dialogue;
-pub mod dialogue;
+pub mod dialogue_v2;
 pub mod economy;
 pub mod faction_system;
 pub mod interaction;
@@ -81,11 +77,11 @@ pub mod tutorial_system;
 
 // Extended achievements: compound conditions (AND/OR/NOT), progress tracking, secret
 // achievements, categories, rewards (items/titles/cosmetics), notification queue.
-pub mod achievement;
+pub mod achievement_v2;
 
 // Advanced save: screenshot thumbnail, playtime tracking, difficulty level, save
 // versioning, cloud save metadata, save slot management, save/load events.
-pub mod save_game;
+pub mod save_game_v2;
 
 // Fighting game combos: input sequence detection, direction notation (236P = QCF+P),
 // cancel windows, combo tree, frame-perfect inputs, input buffer, combo counter.
@@ -94,7 +90,7 @@ pub mod input_combo;
 // Enhanced inventory: grid-based inventory (items occupy WxH cells like Diablo),
 // auto-sort/compact, item categories, item comparison tooltips, equipment set bonuses,
 // item durability repair.
-pub mod inventory;
+pub mod inventory_v2;
 
 // NPC management: NPC schedules (daily routines), NPC spawning/despawning,
 // NPC merchant with inventory, NPC dialogue triggers, NPC pathfinding integration,
@@ -134,7 +130,7 @@ pub mod collectibles;
 
 // Enhanced camera: multiple camera modes, smooth transitions, camera effects stack,
 // cinematic camera with keyframed paths, split-screen support.
-pub mod camera_system;
+pub mod camera_system_v2;
 
 // Level/map progression: level sequence, level unlocking conditions, par time/score,
 // star ratings, level statistics, level select data, world map nodes.
@@ -160,17 +156,6 @@ pub mod object_pooling;
 // scope zoom, thermal/night vision overlays, underwater tint, death grayscale,
 // hit indicators on screen edges.
 pub mod camera_effects;
-n// Complete player controller: input processing, movement modes, camera,
-// interaction, inventory hotbar, HUD data, stamina, footsteps.
-pub mod player_controller;
-
-// Enhanced companion AI (v3): formation, combat support, healing,
-// callouts, abilities, loyalty, morale, commands.
-pub mod ai_companion_v3;
-
-// Multiplayer game framework: lobby, teams, rounds, scoreboard,
-// kill feed, match timer, game mode rules.
-pub mod multiplayer_game;
 
 // ---------------------------------------------------------------------------
 // Re-exports: character controller
@@ -359,7 +344,7 @@ pub use building_system::{
 // Re-exports: crafting v2
 // ---------------------------------------------------------------------------
 
-pub use crafting::{
+pub use crafting_v2::{
     AppliedEnchantment, CraftedItem, CraftingOutput as CraftingV2Output, CraftingResult,
     CraftingStation, CraftingSystem, EnchantResult, Enchantment, Ingredient, MaterialBonus,
     QualityTier, Recipe, RecipeBook, RecipeCategory, StatRoller,
@@ -398,7 +383,7 @@ pub use scoring::{
 // Re-exports: dialogue v2
 // ---------------------------------------------------------------------------
 
-pub use dialogue::{
+pub use dialogue_v2::{
     BarkManager, BarkTrigger, Choice as DialogueV2Choice, ContentLine,
     DialogueEvent as DialogueV2Event, DialogueQueue, DialogueV2Component,
     DialogueV2System, InkAction, InkCondition, Knot, NpcDialogueConfig,
@@ -466,38 +451,6 @@ pub use procedural_animation::{
     LeanLayer, LookAtConstraint, ProceduralAnimComponent, ProceduralAnimController,
     ProceduralWalkCycle, RecoilLayer, TailPhysics,
 };
-
-// Enhanced character: wall running, wall jumping, ledge grabbing, sliding,
-// dashing, double jump, ground pound, grapple hook, swimming with diving.
-pub mod character;
-
-// HUD/UI management: UI stack (push/pop screens), UI transitions,
-// UI input routing, UI scaling for different resolutions, safe area margins.
-pub mod ui_manager;
-
-// Game state machine: MainMenu, Loading, Playing, Paused, Cutscene,
-// GameOver, Victory, with state transitions and data passing.
-pub mod game_state;
-
-// Gameplay event system: typed events, event channels, event history,
-// event replay, event filtering, event statistics.
-pub mod event_system;
-
-// Gameplay physics materials: footstep sounds by surface, bullet impact
-// VFX by surface, slide friction by surface, bounce behavior.
-pub mod physics_materials_gameplay;
-
-// Animation state machine runtime: state transitions, blend parameters,
-// animation events, root motion extraction, state query, blend spaces.
-pub mod animation_controller;
-
-// Physics interaction: pick up objects, throw, push, pull, physics handles
-// (spring joint to hand), object inspection mode, grab mechanics.
-pub mod physics_interaction;
-
-// Game settings: graphics quality presets, audio settings, control bindings,
-// accessibility options, language selection, save/load settings.
-pub mod settings_system;
 
 // Comprehensive input: action/axis bindings, dead zone processing, input
 // smoothing, input recording/playback, virtual inputs (for AI), input device

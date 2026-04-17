@@ -345,8 +345,6 @@ impl ContactConstraint {
         baumgarte: f32,
         slop: f32,
     ) {
-        let safe_dt = dt.max(1e-6);
-
         self.r_a = self.point - body_a.position;
         self.r_b = self.point - body_b.position;
 
@@ -397,7 +395,7 @@ impl ContactConstraint {
 
         // Baumgarte stabilization: push objects apart when penetrating
         let pen_correction = (self.penetration - slop).max(0.0);
-        self.velocity_bias += baumgarte * pen_correction / safe_dt;
+        self.velocity_bias += baumgarte * pen_correction / dt;
 
         // Restitution (bounce) -- only apply if closing velocity is significant
         if closing_vel < -1.0 {
@@ -761,8 +759,6 @@ impl Constraint for FixedJoint {
     }
 
     fn pre_solve(&mut self, body_a: &RigidBody, body_b: &RigidBody, dt: f32) {
-        let safe_dt = dt.max(1e-6);
-
         self.r_a = body_a.rotation * self.local_anchor_a;
         self.r_b = body_b.rotation * self.local_anchor_b;
 
@@ -771,7 +767,7 @@ impl Constraint for FixedJoint {
 
         // Position error
         let error = world_anchor_b - world_anchor_a;
-        self.bias = error * (BAUMGARTE_FACTOR / safe_dt);
+        self.bias = error * (BAUMGARTE_FACTOR / dt);
 
         // Compute effective mass matrix K^-1 where
         // K = (1/ma + 1/mb)*I - [ra]x*Ia^-1*[ra]x - [rb]x*Ib^-1*[rb]x
@@ -875,8 +871,6 @@ impl Constraint for BallJoint {
     }
 
     fn pre_solve(&mut self, body_a: &RigidBody, body_b: &RigidBody, dt: f32) {
-        let safe_dt = dt.max(1e-6);
-
         self.r_a = body_a.rotation * self.local_anchor_a;
         self.r_b = body_b.rotation * self.local_anchor_b;
 
@@ -884,7 +878,7 @@ impl Constraint for BallJoint {
         let world_anchor_b = body_b.position + self.r_b;
 
         let error = world_anchor_b - world_anchor_a;
-        self.bias = error * (BAUMGARTE_FACTOR / safe_dt);
+        self.bias = error * (BAUMGARTE_FACTOR / dt);
 
         let inv_mass_sum = body_a.inv_mass + body_b.inv_mass;
         let inv_inertia_a = body_a.world_inv_inertia();
@@ -1007,8 +1001,6 @@ impl Constraint for HingeJoint {
     }
 
     fn pre_solve(&mut self, body_a: &RigidBody, body_b: &RigidBody, dt: f32) {
-        let safe_dt = dt.max(1e-6);
-
         // Position constraint (same as ball joint)
         self.r_a = body_a.rotation * self.local_anchor_a;
         self.r_b = body_b.rotation * self.local_anchor_b;
@@ -1017,7 +1009,7 @@ impl Constraint for HingeJoint {
         let world_anchor_b = body_b.position + self.r_b;
 
         let error = world_anchor_b - world_anchor_a;
-        self.bias_pos = error * (BAUMGARTE_FACTOR / safe_dt);
+        self.bias_pos = error * (BAUMGARTE_FACTOR / dt);
 
         let inv_mass_sum = body_a.inv_mass + body_b.inv_mass;
         let inv_inertia_a = body_a.world_inv_inertia();

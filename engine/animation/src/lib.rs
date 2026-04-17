@@ -11,7 +11,6 @@ pub mod blend_spaces;
 pub mod blend_tree;
 pub mod components;
 pub mod foot_ik;
-pub mod gpu_bridge;
 pub mod ik;
 pub mod morph_targets;
 pub mod retargeting;
@@ -52,14 +51,6 @@ pub use animation_graph::{
     EdgeId, GraphEdge, GraphNodeData, GraphOutput, IkNode, IkTarget, LayerNode, NodeId,
     NodeState, NodeType, ParamDescriptor, ParamId, ParamValue, SelectNode, StateNode,
     SubGraphNode, TransitionCondition, TransitionState,
-};
-pub use gpu_bridge::{
-    GpuDualQuat, SkinningResult, SkinnedEntityState,
-    batch_update_and_upload, compute_skinning_matrices, lerp_gpu_matrices,
-    matrices_to_dual_quaternions, renderer_to_gpu_matrices, transform_to_dual_quat,
-    update_renderer_and_get_gpu_data, update_skinned_entity, update_skinned_renderer,
-    upload_bone_palette, upload_dual_quaternion_palette, validate_bone_count,
-    bone_palette_buffer_size, dq_palette_buffer_size, MAX_GPU_BONES,
 };
 pub use foot_ik::{
     FootDefinition, FootIkDebugInfo, FootIkSettings, FootIkState, FootIkSystem, FootSide,

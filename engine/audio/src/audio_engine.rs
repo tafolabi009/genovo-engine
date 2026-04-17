@@ -464,9 +464,9 @@ impl AudioEngine {
         let steal_idx = match self.voice_steal_policy {
             VoiceStealPolicy::None => return,
             VoiceStealPolicy::Oldest => self.voices.iter().enumerate()
-                .min_by(|(_, a), (_, b)| a.creation_time.partial_cmp(&b.creation_time).unwrap_or(std::cmp::Ordering::Equal)).map(|(i, _)| i),
+                .min_by(|(_, a), (_, b)| a.creation_time.partial_cmp(&b.creation_time).unwrap()).map(|(i, _)| i),
             VoiceStealPolicy::Quietest => self.voices.iter().enumerate()
-                .min_by(|(_, a), (_, b)| a.effective_volume().partial_cmp(&b.effective_volume()).unwrap_or(std::cmp::Ordering::Equal)).map(|(i, _)| i),
+                .min_by(|(_, a), (_, b)| a.effective_volume().partial_cmp(&b.effective_volume()).unwrap()).map(|(i, _)| i),
             VoiceStealPolicy::LowestPriority => self.voices.iter().enumerate()
                 .min_by_key(|(_, v)| v.priority).map(|(i, _)| i),
             VoiceStealPolicy::Farthest => {
@@ -476,7 +476,7 @@ impl AudioEngine {
                     .max_by(|(_, a), (_, b)| {
                         let da = dist_sq(a.world_position, lp);
                         let db = dist_sq(b.world_position, lp);
-                        da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+                        da.partial_cmp(&db).unwrap()
                     }).map(|(i, _)| i)
             }
         };

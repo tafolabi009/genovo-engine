@@ -590,9 +590,6 @@ pub struct MpscSendFuture<T> {
     inner: Arc<Mutex<MpscInner<T>>>,
     value: Option<T>,
 }
-
-// SAFETY: MpscSendFuture does not contain self-referential data;
-// all fields are independently movable.
 impl<T> Unpin for MpscSendFuture<T> {}
 
 impl<T> std::future::Future for MpscSendFuture<T> {
@@ -702,8 +699,6 @@ where
     result_a: Option<A::Output>,
     result_b: Option<B::Output>,
 }
-
-// SAFETY: All child futures are boxed/pinned; Join itself is freely movable.
 impl<A: std::future::Future, B: std::future::Future> Unpin for Join<A, B> {}
 
 /// Join two futures, returning both results when complete.
@@ -774,8 +769,6 @@ where
     result_b: Option<B::Output>,
     result_c: Option<C::Output>,
 }
-
-// SAFETY: All child futures are boxed/pinned; Join3 itself is freely movable.
 impl<A: std::future::Future, B: std::future::Future, C: std::future::Future> Unpin for Join3<A, B, C> {}
 
 /// Join three futures, returning all results when every future completes.
@@ -915,8 +908,6 @@ pub struct JoinAll<F: std::future::Future> {
     futures: Vec<Option<Pin<Box<F>>>>,
     results: Vec<Option<F::Output>>,
 }
-
-// SAFETY: All child futures are boxed/pinned; JoinAll itself is freely movable.
 impl<F: std::future::Future> Unpin for JoinAll<F> {}
 
 /// Join a collection of futures, returning all results.

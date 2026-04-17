@@ -85,7 +85,7 @@ pub mod billboard;
 pub mod instanced_renderer;
 
 // Frame graph, pipeline orchestration, atlas packing, culling, and debug viz.
-pub mod render_graph;
+pub mod render_graph_v2;
 pub mod render_pipeline;
 pub mod texture_atlas;
 pub mod culling;
@@ -154,7 +154,7 @@ pub mod render_targets;
 pub mod shader_defines;
 
 // Advanced bloom: dual-filter, soft knee threshold, lens dirt, energy conservation.
-pub mod bloom;
+pub mod bloom_v2;
 
 // Colour space conversions: sRGB, Rec.2020, DCI-P3, ACES, Oklab, CIE LAB/LCH, deltaE.
 pub mod color_space;
@@ -169,7 +169,7 @@ pub mod render_statistics;
 pub mod screen_capture;
 
 // Extended tone mapping: local tone mapping, HDR histogram, auto-exposure, EV100.
-pub mod tone_map;
+pub mod tone_map_v2;
 
 // Vertex data compression: position/UV quantization, octahedron normals, TBN quaternion.
 pub mod vertex_compression;
@@ -205,7 +205,7 @@ pub mod ambient_system;
 // Enhanced deferred: thin G-buffer (albedo+metallic in one RT, normal+roughness in one),
 // stencil-based light volumes, light pre-pass (deferred lighting), tiled deferred,
 // cluster debug visualization.
-pub mod deferred;
+pub mod deferred_v2;
 
 // Ground Truth AO (GTAO): multi-bounce AO, bent normals, specular occlusion,
 // temporal accumulation, spatial denoising, quality presets.
@@ -218,7 +218,7 @@ pub mod atmospheric_effects;
 // Enhanced procedural sky: physically-based sky with ozone layer, multiple scattering
 // precomputation, aerial perspective LUT, planet rendering from space, ring system,
 // nebula backdrop.
-pub mod procedural_sky;
+pub mod procedural_sky_v2;
 
 // Material layering: height-based blend between layers, detail materials (add
 // wear/scratches), decal materials (project onto surfaces), material masks,
@@ -228,7 +228,7 @@ pub mod material_layering;
 // Enhanced shadows: contact shadows (screen-space ray march from light), area light
 // shadows, shadow bias auto-tuning, shadow cache (don't re-render static shadows),
 // shadow importance (skip shadows for distant/small lights).
-pub mod shadow_system;
+pub mod shadow_system_v2;
 
 // Lightmap GI baking: progressive path tracing, UV2 unwrapping, denoising,
 // HDR lightmap encoding, directional lightmaps, irradiance probe baking.
@@ -273,7 +273,7 @@ pub mod post_process_stack;
 
 // Enhanced DOF: circular DOF with bokeh shapes, foreground/background separation,
 // partial occlusion, smooth transitions, DOF from camera settings.
-pub mod depth_of_field;
+pub mod depth_of_field_v2;
 
 // Contact/screen-space shadows: ray-march from light direction in screen space,
 // thickness estimation, soft contact shadows, temporal filtering.
@@ -282,53 +282,6 @@ pub mod screen_space_shadows;
 // Static mesh merging: combine multiple static meshes into one draw call,
 // per-material sub-meshes, bounding volume update, automatic merging.
 pub mod mesh_merger;
-
-// ---------------------------------------------------------------------------
-// Scene renderer -- complete GPU rendering pipeline with PBR, primitives, grid.
-// ---------------------------------------------------------------------------
-pub mod scene_renderer;
-
-// ---------------------------------------------------------------------------
-// Master render loop -- orchestrates all render passes in order.
-// ---------------------------------------------------------------------------
-pub mod render_loop;
-
-// ---------------------------------------------------------------------------
-// GPU rendering feature modules -- real wgpu pipelines with WGSL shaders.
-// ---------------------------------------------------------------------------
-
-// GPU texture sampling: texture manager, mipmap generation, normal/PBR maps,
-// textured PBR pipeline with albedo/normal/metallic-roughness/emissive/AO.
-pub mod gpu_texture_sampling;
-
-// GPU shadow maps: depth-only shadow pass, cascaded shadow maps (4 cascades),
-// PCF 3x3 soft shadows, directional/point/spot light shadows, bias control.
-pub mod gpu_shadow_maps;
-
-// GPU post-processing: bloom (bright/downsample/upsample/composite), FXAA,
-// tone mapping (ACES/Reinhard/Uncharted2), vignette, chromatic aberration,
-// film grain -- all as fullscreen WGSL shader passes.
-pub mod gpu_post_process;
-
-// GPU skeletal animation: skinned vertex shader (LBS), dual quaternion skinning,
-// bone palette storage buffer, morph target compute shader, animation playback.
-pub mod gpu_skeletal;
-
-// GPU instanced rendering: per-instance storage buffer, instanced vertex shader,
-// frustum culling, LOD per instance, foliage/grass wind animation.
-pub mod gpu_instancing;
-
-// GPU particle rendering: billboard vertex shader, soft particles, sprite sheet
-// animation, additive/alpha blending, velocity-stretched billboards, sorting.
-pub mod gpu_particles_render;
-
-// GPU terrain rendering: heightmap-displaced vertex shader, triplanar mapping,
-// splatmap material blending, clipmap LOD, detail textures, distance fog.
-pub mod gpu_terrain_render;
-
-// GPU environment maps and sky: procedural atmospheric scattering sky, cubemap
-// sky rendering, irradiance convolution, specular prefilter, BRDF LUT, IBL.
-pub mod gpu_environment;
 
 // ---------------------------------------------------------------------------
 // Additional rendering subsystems (batch 6)
@@ -348,76 +301,16 @@ pub mod shader_cache;
 // Advanced render queue: sort by opaque (front-to-back), transparent
 // (back-to-front), shadow casters (by cascade), sky (last), overlay (on top);
 // priority override per material; queue clear/rebuild per frame.
-pub mod render_queue;
+pub mod render_queue_v2;
 
 // Material instances with GPU uniform buffers: per-material uniform buffer,
 // dirty tracking, batch update, material parameter animation, material LOD
 // (simplified shader at distance).
-pub mod material_instance;
+pub mod material_instance_v2;
 
 // G-Buffer configuration: configurable format (thin/standard/extended),
 // encode/decode functions, octahedron normal mapping, bandwidth analysis.
 pub mod gbuffer_layout;
-n// Shadow map rendering: depth-only render pass, cascaded shadow maps,
-// cubemap shadows for point lights, PCF with Poisson disk, shadow atlas.
-pub mod shadow_renderer;
-
-// Skybox rendering: cubemap or procedural sky, fullscreen quad rendering,
-// HDR environment sampling, sun/moon/stars, atmosphere presets.
-pub mod skybox_renderer;
-
-// Post-process execution: chain of effects (bloom, tonemap, FXAA),
-// ping-pong render targets, final blit to screen, quality presets.
-pub mod post_process_runner;
-
-// Production frustum culling: extract planes from VP matrix, AABB test
-// against 6 planes, batch test with early-out, visible set output,
-// hierarchical octree culling, screen-size culling, temporal coherence.
-pub mod frustum_culling;
-
-// Texture lifecycle: create/destroy GPU textures, format conversion,
-// mipmap generation, texture pool, memory tracking, LRU eviction.
-pub mod texture_manager;
-
-// Uniform buffer management: dynamic uniform buffer with offset allocation,
-// per-frame reset, alignment handling, bind group caching, material UBOs.
-pub mod uniform_buffer;
-
-// ---------------------------------------------------------------------------
-// Additional rendering subsystems (batch 7)
-// ---------------------------------------------------------------------------
-
-// Enhanced PBR: clearcoat, sheen, transmission, thin-film iridescence,
-// anisotropy direction map, subsurface color, specular tint, IOR control.
-pub mod pbr;
-
-// Volumetric light shafts: froxel-based integration, scattering in
-// participating media, per-light volumetric contribution, temporal reprojection.
-pub mod volumetric_lighting;
-
-// Enhanced terrain: virtual texturing, clipmap rendering, tessellation LOD,
-// procedural detail, snow accumulation, puddles from rain.
-pub mod terrain_rendering;
-
-// Environment probes: capture cubemap at probe position, parallax correction,
-// probe blending by distance, real-time probe update scheduling.
-pub mod environment_probe;
-
-// Procedural mesh generation: parametric surfaces, revolution surfaces,
-// extrusion, Catmull-Clark subdivision, edge loops, normal/tangent computation.
-pub mod mesh_generation;
-
-// Enhanced debug rendering: persistent shapes with duration, batched lines/
-// triangles, screen-space text labels, wire mesh, navmesh visualization.
-pub mod debug_renderer;
-
-// Shader management: shader program objects, uniform binding, texture slot
-// management, global shader parameters, shader warm-up, complexity metrics.
-pub mod shader_system;
-
-// Render world: extracted render data from ECS world, separate thread-safe
-// render representation, mesh/material/transform extraction, visibility results.
-pub mod render_world;
 
 // ---------------------------------------------------------------------------
 // Re-exports

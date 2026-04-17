@@ -66,9 +66,9 @@ pub use prefab_editor::{
 };
 pub use animation_editor::{
     AnimationClip, AnimationEditor, AnimationEvent, AnimationPreview, AnimationTrack,
-    BlendNode, BlendNodeId, BlendTree, ClipId, CurveMode, EventId,
-    Keyframe as AnimationKeyframe, KeyframeId, KeyframeValue, LoopMode, PlaybackState,
-    TangentHandle, TangentLinkMode, TimelineViewState, TrackId, TrackTarget,
+    BlendNode, BlendNodeId, BlendTree, ClipId, CurveMode, EventId, Keyframe,
+    KeyframeId, KeyframeValue, LoopMode, PlaybackState, TangentHandle, TangentLinkMode,
+    TimelineViewState, TrackId, TrackTarget,
 };
 pub use level_editor::{
     GameplayLayer, LayerId, Level, LevelBounds, LevelConnection, LevelEditor,
@@ -99,34 +99,3 @@ pub mod editor_shortcuts;
 // recent projects, recently opened files, editor theme selection, viewport
 // settings, grid settings.
 pub mod editor_preferences;
-n// 3D transform gizmo: translate/rotate/scale handles, axis picking,
-// plane picking, delta computation from mouse drag.
-pub mod gizmo_renderer;
-
-// Editor viewport: scene renderer integration, camera controls,
-// selection highlighting, grid overlay.
-pub mod viewport_renderer;
-
-// World/level editor: multi-level editing, level streaming setup, world bounds
-// visualization, level connection editor.
-pub mod world_editor;
-
-// Enhanced hierarchy: drag-drop reparenting, multi-select, search/filter,
-// visibility/lock toggles, context menu, inline rename, expand/collapse.
-pub mod scene_hierarchy;
-
-// Enhanced material editor: node graph for materials, real-time preview sphere,
-// material parameter animation, material comparison.
-pub mod material_editor;
-
-// Particle effect editor: emitter configuration, force field setup, preview
-// with timeline, curve editors for particle properties.
-pub mod particle_editor;
-
-// Physics configuration editor: collision matrix editor, physics material
-// editor, joint constraint visualizer.
-pub mod physics_editor;
-
-// Settings/preferences editor: categorized settings, search, reset to defaults,
-// import/export settings.
-pub mod settings_editor;
