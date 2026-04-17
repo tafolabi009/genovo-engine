@@ -74,6 +74,21 @@ pub use vm::{
     ScriptFunction, ScriptValue, ScriptVM, VM,
 };
 pub use vm::compiler::Compiler;
+pub use type_system::{
+    BinaryOp, EnumDef, EnumPayload, EnumVariant, FunctionParam, FunctionType,
+    SourceLocation, StructDef, StructField, Type, TypeChecker, TypeError,
+    TypeErrorKind, UnaryOp, is_assignable, common_type,
+};
+pub use gc::{
+    ClosureData, CollectionType, GarbageCollector, GcCollectionStats, GcColor,
+    GcConfig, GcHandle, GcObjectData, GcStats, GcValue, Generation,
+    NativeObject, StructInstance,
+};
+pub use ffi_bridge::{
+    ArgDescriptor, AsyncCallId, AsyncCallStatus, FfiBridge, FfiBridgeStats,
+    FfiError, FfiResult, FfiValue, FunctionDescriptor, NativeHandle,
+    PendingCallback, ScriptCallback,
+};
 
 /// Convenience prelude for common imports.
 pub mod prelude {
@@ -82,9 +97,12 @@ pub mod prelude {
         Coroutine, CoroutineId, CoroutineManager, CoroutineState, CoroutineValue, WaitFor,
     };
     pub use crate::debugger::{ScriptDebugger, StackFrame, BreakpointCondition};
+    pub use crate::ffi_bridge::{FfiBridge, FfiValue, FunctionDescriptor};
+    pub use crate::gc::{GarbageCollector, GcConfig, GcHandle, GcObjectData, GcValue};
     pub use crate::module_system::{ModuleRegistry, ScriptModule};
     pub use crate::optimizer::{BytecodeOptimizer, OptLevel};
     pub use crate::stdlib::get_stdlib;
+    pub use crate::type_system::{Type, TypeChecker, TypeError};
     pub use crate::vm::{
         GenovoVM, NativeFn, ScriptContext, ScriptError, ScriptFunction, ScriptValue,
         ScriptVM, VM,

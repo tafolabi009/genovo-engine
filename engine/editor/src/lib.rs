@@ -4,16 +4,22 @@
 //! Genovo engine runtime. It includes a 3D viewport with gizmo manipulation,
 //! a property inspector with undo/redo, an asset browser, a scene hierarchy
 //! panel, project management, a visual node graph editor, an animation curve
-//! editor, a node-graph-based material editor, terrain editing tools, and
+//! editor, a node-graph-based material editor, terrain editing tools,
 //! extended scene view features (bookmarks, snapping, measurements, multi-
-//! viewport layouts, statistics overlays).
+//! viewport layouts, statistics overlays), prefab editing with override tracking,
+//! animation timeline editing, level editing with streaming, and performance
+//! monitoring.
 
+pub mod animation_editor;
 pub mod asset_browser;
 pub mod curve_editor;
 pub mod hierarchy;
 pub mod inspector;
+pub mod level_editor;
 pub mod material_editor;
 pub mod node_graph;
+pub mod performance_monitor;
+pub mod prefab_editor;
 pub mod project;
 pub mod scene_view;
 pub mod selection;
@@ -52,4 +58,25 @@ pub use undo_system::{
 pub use viewport::{
     CameraMode, EditorViewport, GizmoMode, GizmoRenderer, PickRay, SelectionManager,
     ViewportCamera,
+};
+pub use prefab_editor::{
+    OverrideKey, OverrideType, Prefab, PrefabComponent, PrefabDiff, PrefabEntity,
+    PrefabEntityId, PrefabError, PrefabId, PrefabInstance, PrefabInstanceId,
+    PrefabManager, PropValue,
+};
+pub use animation_editor::{
+    AnimationClip, AnimationEditor, AnimationEvent, AnimationPreview, AnimationTrack,
+    BlendNode, BlendNodeId, BlendTree, ClipId, CurveMode, EventId, Keyframe,
+    KeyframeId, KeyframeValue, LoopMode, PlaybackState, TangentHandle, TangentLinkMode,
+    TimelineViewState, TrackId, TrackTarget,
+};
+pub use level_editor::{
+    GameplayLayer, LayerId, Level, LevelBounds, LevelConnection, LevelEditor,
+    LevelId, LevelSettings, LevelState, SpawnPoint, SpawnPointId, SpawnType,
+    StreamingConfig, StreamingMode, TriggerAction, TriggerShape, TriggerZone,
+    TriggerZoneId,
+};
+pub use performance_monitor::{
+    AlertSeverity, FrameMetrics, MemoryTracker, PerfGraphData, PerfSnapshot,
+    PerformanceAlert, PerformanceConfig, PerformanceMonitor, SystemTiming,
 };
