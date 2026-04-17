@@ -102,8 +102,9 @@ impl Engine {
         asset_server.register_loader(genovo_assets::WavLoader);
         asset_server.register_loader(genovo_assets::TextLoader);
         asset_server.register_loader(genovo_assets::BytesLoader);
+        asset_server.register_loader(genovo_assets::GltfLoader);
         log::info!(
-            "  Asset server at '{}' with default loaders (bmp, obj, wav, txt, bin)",
+            "  Asset server at '{}' with default loaders (bmp, obj, wav, txt, bin, glTF)",
             config.asset_root,
         );
 
@@ -195,6 +196,28 @@ impl Engine {
     }
 
     // -----------------------------------------------------------------------
+    // Physics-ECS synchronization
+    // -----------------------------------------------------------------------
+
+    /// Copy physics body transforms (position/rotation) to the ECS
+    /// `TransformData` components for all entities that have an associated
+    /// rigid body.
+    ///
+    /// Call this after `physics_world.step()` each fixed update to keep the
+    /// ECS world in sync with the physics simulation.
+    pub fn sync_physics_to_ecs(&mut self) {
+        for body in self.physics_world.bodies() {
+            let entity_id = body.handle.0;
+            if let Some(entity) = self.world.entity_from_id(entity_id) {
+                if let Some(transform) = self.world.get_component_mut::<genovo_ecs::TransformData>(entity) {
+                    transform.position = [body.position.x, body.position.y, body.position.z];
+                    transform.rotation = [body.rotation.x, body.rotation.y, body.rotation.z, body.rotation.w];
+                }
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
     // Main loop
     // -----------------------------------------------------------------------
 
@@ -220,6 +243,7 @@ impl Engine {
                 if let Err(e) = self.physics_world.step(fixed_dt) {
                     log::error!("Physics step error: {}", e);
                 }
+                self.sync_physics_to_ecs();
             }
 
             // Update audio mixer

@@ -66,9 +66,9 @@ pub use prefab_editor::{
 };
 pub use animation_editor::{
     AnimationClip, AnimationEditor, AnimationEvent, AnimationPreview, AnimationTrack,
-    BlendNode, BlendNodeId, BlendTree, ClipId, CurveMode, EventId, Keyframe,
-    KeyframeId, KeyframeValue, LoopMode, PlaybackState, TangentHandle, TangentLinkMode,
-    TimelineViewState, TrackId, TrackTarget,
+    BlendNode, BlendNodeId, BlendTree, ClipId, CurveMode, EventId,
+    Keyframe as AnimationKeyframe, KeyframeId, KeyframeValue, LoopMode, PlaybackState,
+    TangentHandle, TangentLinkMode, TimelineViewState, TrackId, TrackTarget,
 };
 pub use level_editor::{
     GameplayLayer, LayerId, Level, LevelBounds, LevelConnection, LevelEditor,

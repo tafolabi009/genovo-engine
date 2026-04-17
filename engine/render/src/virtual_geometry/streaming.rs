@@ -50,7 +50,7 @@ impl StreamPriority {
 
 impl PartialEq for StreamPriority {
     fn eq(&self, other: &Self) -> bool {
-        self.priority_value() == other.priority_value()
+        self.priority_value().total_cmp(&other.priority_value()) == Ordering::Equal
     }
 }
 
@@ -64,9 +64,7 @@ impl PartialOrd for StreamPriority {
 
 impl Ord for StreamPriority {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.priority_value()
-            .partial_cmp(&other.priority_value())
-            .unwrap_or(Ordering::Equal)
+        self.priority_value().total_cmp(&other.priority_value())
     }
 }
 

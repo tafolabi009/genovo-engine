@@ -11,9 +11,12 @@ Genovo is a modular, data-oriented game engine written in Rust with C++ interope
 
 ## High-Level Architecture
 
+The engine comprises **26 crates** under `engine/`, the `genovo-ffi` interop
+crate, and the **Genovo Studio** editor application (`genovo-app`).
+
 ```
 +---------------------------------------------------------------+
-|                        Game / Application                      |
+|                  Genovo Studio (genovo-app)                     |
 +---------------------------------------------------------------+
 |                        genovo (facade crate)                   |
 +---------------------------------------------------------------+
@@ -26,13 +29,25 @@ Genovo is a modular, data-oriented game engine written in Rust with C++ interope
 |  |  Scene   |  | Animation|  | Physics |  |  Audio   |        |
 |  +----------+  +----------+  +---------+  +----------+        |
 |                                                                |
-|  +----------+  +----------+  +---------+                       |
-|  |  Render  |  |  Assets  |  | Platform|                       |
-|  +----------+  +----------+  +---------+                       |
+|  +----------+  +----------+  +---------+  +----------+        |
+|  |  Render  |  |  Assets  |  | Platform|  |    UI    |        |
+|  +----------+  +----------+  +---------+  +----------+        |
 |                                                                |
-|  +----------+  +----------+                                    |
-|  |   ECS    |  |   Core   |                                    |
-|  +----------+  +----------+                                    |
+|  +----------+  +----------+  +----------+ +----------+        |
+|  |   ECS    |  |   Core   |  |  Terrain |  |   VFX   |        |
+|  +----------+  +----------+  +----------+ +----------+        |
+|                                                                |
+|  +----------+  +----------+  +----------+ +----------+        |
+|  |Cinematics|  |  Debug   |  | Gameplay |  |Localize  |        |
+|  +----------+  +----------+  +----------+ +----------+        |
+|                                                                |
+|  +----------+  +----------+  +----------+ +----------+        |
+|  | ProcGen  |  |  Replay  |  |SaveSystem|  |Serialize |        |
+|  +----------+  +----------+  +----------+ +----------+        |
+|                                                                |
+|  +----------+                                                  |
+|  |  World   |                                                  |
+|  +----------+                                                  |
 |                                                                |
 +---------------------------------------------------------------+
 |              genovo-ffi (C++ interop layer)                     |
@@ -67,10 +82,32 @@ Genovo is a modular, data-oriented game engine written in Rust with C++ interope
 - **Networking** (`genovo-networking`) - Client-server transport (UDP with reliability layer), state replication, client-side prediction, and lag compensation.
 - **Scripting** (`genovo-scripting`) - Embedded scripting runtime for gameplay logic (Lua or custom DSL).
 
+### World & Content Layer
+
+- **Terrain** (`genovo-terrain`) - Runtime terrain rendering, LOD, sculpting, splatmap-based texturing.
+- **VFX** (`genovo-vfx`) - GPU and CPU particle systems, ribbon trails, visual effects.
+- **ProcGen** (`genovo-procgen`) - Procedural content generation (noise, L-systems, dungeon layout, etc.).
+- **Cinematics** (`genovo-cinematics`) - In-game cutscene sequencing and camera tracks.
+- **World** (`genovo-world`) - Streaming world management, level sectors, world composition.
+
+### Infrastructure Layer
+
+- **Debug** (`genovo-debug`) - Debug rendering, console, runtime inspection.
+- **Serialization** (`genovo-serialization`) - Binary and text serialization for engine types.
+- **Save System** (`genovo-save-system`) - Game save/load with versioned snapshots.
+- **Replay** (`genovo-replay`) - Input recording and deterministic replay.
+- **Localization** (`genovo-localization`) - Multi-language string tables and locale management.
+- **Gameplay** (`genovo-gameplay`) - Gameplay framework utilities (damage, inventory, interactables).
+- **UI** (`genovo-ui`) - Immediate/retained mode UI for HUD, menus, and in-game interfaces.
+
 ### Tooling Layer
 
-- **Editor** (`genovo-editor`) - Full-featured level editor with 3D viewport, property inspector, asset browser, scene hierarchy, and project management.
+- **Editor** (`genovo-editor`) - Full-featured level editor (Genovo Studio) with 3D viewport, property inspector, asset browser, scene hierarchy, undo/redo, animation timeline, material graph, terrain tools, prefab system, and performance monitoring.
 - **FFI** (`genovo-ffi`) - C-compatible foreign function interface for interop with C++ middleware libraries.
+
+### Genovo Studio
+
+The standalone editor application (`genovo-app`) provides an integrated development environment built on top of the editor crate. It offers a dockable UI, multiple viewports, project management, asset import pipelines, and play-in-editor mode. Currently under active development.
 
 ## Data Flow
 

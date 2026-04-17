@@ -129,7 +129,7 @@ pub use sparse_set_v2::{
 // System graph re-exports.
 pub use system_graph::{
     ComponentAccess as GraphComponentAccess, ComponentAccessKind, DependencyEdge,
-    DependencyReason, GraphError, GraphSummary, ParallelBatch,
+    DependencyReason, GraphError, GraphSummary, ParallelBatch as GraphParallelBatch,
     SystemGraph, SystemNode, SystemIndex as GraphSystemIndex,
 };
 

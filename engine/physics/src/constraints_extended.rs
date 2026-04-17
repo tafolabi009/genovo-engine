@@ -718,6 +718,8 @@ impl Constraint for WeldJoint {
     }
 
     fn pre_solve(&mut self, body_a: &RigidBody, body_b: &RigidBody, dt: f32) {
+        let safe_dt = dt.max(1e-6);
+
         self.r_a = body_a.rotation * self.local_anchor_a;
         self.r_b = body_b.rotation * self.local_anchor_b;
 
@@ -725,7 +727,7 @@ impl Constraint for WeldJoint {
         let world_anchor_b = body_b.position + self.r_b;
 
         let error = world_anchor_b - world_anchor_a;
-        self.bias = error * (BAUMGARTE_FACTOR / dt);
+        self.bias = error * (BAUMGARTE_FACTOR / safe_dt);
 
         let inv_mass_sum = body_a.inv_mass + body_b.inv_mass;
         let inv_inertia_a = body_a.world_inv_inertia();
