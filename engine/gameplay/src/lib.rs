@@ -32,27 +32,41 @@
 //! | [`minimap`]              | Minimap with fog of war, markers, and zoom controls |
 //! | [`stealth_system`]       | Visibility, noise, disguises, AI search patterns |
 //! | [`scoring`]              | Points, combos, streaks, leaderboards, MVP calculation |
+//! | [`dialogue_v2`]          | Ink-style dialogue engine with variables and barks |
+//! | [`cooking_system`]       | Cooking/alchemy with recipes, buffs, and discovery |
+//! | [`mount_system`]         | Mountable creatures with stamina, taming, combat |
+//! | [`day_night_cycle`]      | Day/night with sun, moon, sky, NPC schedules |
+//! | [`trap_system`]          | Traps and hazards: spikes, fire, poison, tripwires |
+//! | [`companion_ai`]         | AI companion follow, combat, commands, morale |
+//! | [`procedural_animation`] | Procedural look-at, breathing, recoil, walk cycle |
 
 pub mod ability_system;
 pub mod ai_director;
 pub mod building_system;
 pub mod camera_controller;
 pub mod character_controller;
+pub mod companion_ai;
+pub mod cooking_system;
 pub mod crafting_v2;
 pub mod damage_system;
+pub mod day_night_cycle;
 pub mod dialogue;
+pub mod dialogue_v2;
 pub mod economy;
 pub mod faction_system;
 pub mod interaction;
 pub mod inventory;
 pub mod minimap;
+pub mod mount_system;
 pub mod movement;
+pub mod procedural_animation;
 pub mod progression;
 pub mod quest_system;
 pub mod scoring;
 pub mod spawner;
 pub mod state_machine;
 pub mod stealth_system;
+pub mod trap_system;
 pub mod vehicle_controller;
 pub mod weapon_system;
 pub mod weather_system;
@@ -277,4 +291,77 @@ pub use scoring::{
     ComboTracker, HighlightType, KillStreak, Leaderboard, LeaderboardEntry, LeaderboardSort,
     MatchHighlight, MatchStats, PlayerMatchSummary, ScoreEvent, ScoreEventType, ScoreTracker,
     ScoringSystem, StatTracker,
+};
+
+// ---------------------------------------------------------------------------
+// Re-exports: dialogue v2
+// ---------------------------------------------------------------------------
+
+pub use dialogue_v2::{
+    BarkManager, BarkTrigger, Choice as DialogueV2Choice, ContentLine,
+    DialogueEvent as DialogueV2Event, DialogueQueue, DialogueV2Component,
+    DialogueV2System, InkAction, InkCondition, Knot, NpcDialogueConfig,
+    Story, StoryRunner, StoryRunnerState, StoryVariableValue, StoryVariables,
+    Stitch,
+};
+
+// ---------------------------------------------------------------------------
+// Re-exports: cooking system
+// ---------------------------------------------------------------------------
+
+pub use cooking_system::{
+    CookedDish, CookingEngine, CookingError, CookingIngredient as CookIngredient,
+    CookingRecipe, CookingStation, CookingStationType, FoodBuff,
+    IngredientCategory, IngredientProperty, IngredientPropertyType, IngredientQuality,
+    PropertyCombinationRules, PropertyInteraction,
+};
+
+// ---------------------------------------------------------------------------
+// Re-exports: mount system
+// ---------------------------------------------------------------------------
+
+pub use mount_system::{
+    Mount, MountAnimState, MountComponent, MountEvent, MountId, MountInput,
+    MountPoint, MountStats, MountSystem, MountType, RiderComponent, RiderId,
+    TamingAction, TamingResult, TamingState,
+};
+
+// ---------------------------------------------------------------------------
+// Re-exports: day/night cycle
+// ---------------------------------------------------------------------------
+
+pub use day_night_cycle::{
+    DayNightComponent, DayNightConfig, DayNightEvent, DayNightState,
+    DayNightSystem, LightSchedule, MoonPhase, NpcScheduleEntry, NpcTimeSchedule,
+    SkyColor, SkyPalette, TimePeriod,
+};
+
+// ---------------------------------------------------------------------------
+// Re-exports: trap system
+// ---------------------------------------------------------------------------
+
+pub use trap_system::{
+    Trap, TrapComponent, TrapDamageType, TrapEffect, TrapEvent, TrapId, TrapManager,
+    TrapState, TrapTrigger, TrapType,
+};
+
+// ---------------------------------------------------------------------------
+// Re-exports: companion AI
+// ---------------------------------------------------------------------------
+
+pub use companion_ai::{
+    CombatBehavior, Companion, CompanionAbility, CompanionAbilityType,
+    CompanionCommand, CompanionComponent as CompanionAIComponent, CompanionEvent,
+    CompanionId, CompanionInventory, CompanionManager, CompanionMood,
+    CompanionState, CompanionStats, FormationType, MoodType as CompanionMoodType,
+};
+
+// ---------------------------------------------------------------------------
+// Re-exports: procedural animation
+// ---------------------------------------------------------------------------
+
+pub use procedural_animation::{
+    BlinkLayer, BoneId, BoneTransform, BreathingLayer, IdleFidgetLayer,
+    LeanLayer, LookAtConstraint, ProceduralAnimComponent, ProceduralAnimController,
+    ProceduralWalkCycle, RecoilLayer, TailPhysics,
 };

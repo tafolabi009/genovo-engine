@@ -5,8 +5,9 @@
 //! crowd simulation with obstacle avoidance, utility AI, goal-oriented
 //! action planning (GOAP), influence maps, steering behaviors,
 //! perception/sensing systems, group formation management, knowledge
-//! representation with inference, tactical combat AI, and NPC dialogue
-//! decision-making.
+//! representation with inference, tactical combat AI, NPC dialogue
+//! decision-making, decision trees, squad coordination, enemy spawning
+//! with difficulty scaling, and extended sensory memory with attention.
 
 pub mod behavior_trees;
 pub mod dialogue_ai;

@@ -44,6 +44,19 @@
 //! - **Trigger volumes** (`trigger_volumes`): sensor shapes with enter/stay/exit
 //!   event tracking, callbacks, one-shot triggers, cooldowns, and layer filtering
 //!
+//! ## Gravity, Joints & Layers
+//!
+//! - **Gravity fields** (`gravity_field`): custom gravity zones (spherical planets,
+//!   directional overrides), gravity wells, anti-gravity volumes, smooth zone
+//!   transitions, radial gravity for spherical worlds
+//! - **Breakable joints** (`breakable_joints`): joints that break under force/torque,
+//!   partial degradation, chain-breaking propagation, fatigue stress accumulation
+//! - **Physics layers** (`physics_layers`): 32-layer collision filtering, collision
+//!   matrix, per-body layer assignment, raycast/trigger layer filtering, presets
+//! - **PBD Fluid v2** (`particles_v2`): position-based fluid dynamics with XSPH
+//!   viscosity, incompressibility constraint, vorticity confinement, surface
+//!   reconstruction, boundary particle handling
+//!
 //! ## Extended Physics Subsystems
 //!
 //! - **Particle physics** (`particle_physics`): PBD particle simulation with
@@ -66,6 +79,7 @@
 
 pub mod aerodynamics;
 pub mod backends;
+pub mod breakable_joints;
 pub mod buoyancy;
 pub mod character_physics;
 pub mod cloth;
@@ -77,12 +91,15 @@ pub mod destruction;
 pub mod dynamics;
 pub mod fluid;
 pub mod fracture_v2;
+pub mod gravity_field;
 pub mod interface;
 pub mod magnetic_field;
 pub mod motor_joint;
 pub mod particle_physics;
+pub mod particles_v2;
 pub mod physics_debug;
 pub mod physics_materials;
+pub mod physics_layers;
 pub mod physics_profiler;
 pub mod ragdoll;
 pub mod rope;
@@ -177,4 +194,24 @@ pub use physics_materials::{
 pub use physics_profiler::{
     CollisionPairCounts, FrameRecord, IslandInfo, MemoryUsage, PhaseTimings,
     PhysicsObjectCounts, PhysicsProfiler, SolverStats, WorstFrameRecord,
+};
+pub use gravity_field::{
+    GravityBlendMode, GravityFalloff, GravityFieldComponent, GravityFieldManager,
+    GravityFieldSystem, GravityMode, GravityPulsation, GravityQueryResult,
+    GravitySourceComponent, GravityTransition, GravityWell, GravityWellId,
+    GravityZone, GravityZoneId, GravityZoneShape, TransitionEasing,
+};
+pub use breakable_joints::{
+    BreakCondition, BreakEffectHint, BreakEvent, BreakMode, BreakableJoint,
+    BreakableJointComponent, BreakableJointId, BreakableJointSystem,
+    ChainBreakConfig, DegradationState, DegradeEvent,
+};
+pub use physics_layers::{
+    BuiltinLayer, CollisionMatrix, LayerFilter, LayerGroup, LayerGroupManager,
+    PhysicsLayerComponent, PhysicsLayerSystem, TriggerLayerFilter,
+};
+pub use particles_v2::{
+    BoundaryParticle, FluidParticle, FluidParticleComponent as FluidParticleComponentV2,
+    FluidSettingsV2, FluidSimulationV2, FluidSimStats,
+    SpatialHashGrid as FluidSpatialHash, SurfaceInfo,
 };

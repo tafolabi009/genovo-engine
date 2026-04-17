@@ -126,6 +126,55 @@ pub mod lens_effects;
 pub mod gpu_skinning;
 
 // ---------------------------------------------------------------------------
+// Additional rendering subsystems (batch 2)
+// ---------------------------------------------------------------------------
+
+// SDF ray-marching: primitives, boolean ops, sphere tracing, AO, soft shadows.
+pub mod raymarching;
+
+// Comprehensive fog: linear, exponential, height fog, animated fog, fog volumes.
+pub mod global_fog;
+
+// Unified reflection: planar, cubemap, SSR, probe blending, parallax correction.
+pub mod reflection_system;
+
+// 2D sprite rendering: batching, atlas UVs, animation, nine-slice, pixel-perfect.
+pub mod sprite_renderer;
+
+// Anti-aliased line rendering: thick lines, dashes, caps, joins, bezier curves.
+pub mod line_renderer;
+
+// GPU text rendering: SDF fonts, glyph atlas, alignment, rich text, outlines.
+pub mod text_renderer;
+
+// Render target management: pooling, MRT, readback, mip generation.
+pub mod render_targets;
+
+// Shader preprocessing: defines, feature flags, variants, complexity analysis.
+pub mod shader_defines;
+
+// Advanced bloom: dual-filter, soft knee threshold, lens dirt, energy conservation.
+pub mod bloom_v2;
+
+// Colour space conversions: sRGB, Rec.2020, DCI-P3, ACES, Oklab, CIE LAB/LCH, deltaE.
+pub mod color_space;
+
+// Image processing on GPU: blur, sharpen, edge detection, resize, histograms.
+pub mod image_effects;
+
+// Detailed render stats: per-pass timing, draw calls, memory, shader compiles.
+pub mod render_statistics;
+
+// Screenshot and video capture: PNG/TGA/BMP encoding, async readback, frame sequences.
+pub mod screen_capture;
+
+// Extended tone mapping: local tone mapping, HDR histogram, auto-exposure, EV100.
+pub mod tone_map_v2;
+
+// Vertex data compression: position/UV quantization, octahedron normals, TBN quaternion.
+pub mod vertex_compression;
+
+// ---------------------------------------------------------------------------
 // Re-exports
 // ---------------------------------------------------------------------------
 
