@@ -20,7 +20,6 @@
 //! ```
 
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use glam::Vec2;
 use genovo_core::Rect;

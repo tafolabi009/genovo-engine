@@ -24,7 +24,6 @@ use glam::Vec2;
 use genovo_core::Rect;
 
 use crate::render_commands::Color;
-use crate::text::{Font, FontAtlas, GlyphUV, TextLayout};
 
 // ---------------------------------------------------------------------------
 // WGSL Shaders (embedded)

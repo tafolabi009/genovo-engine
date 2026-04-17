@@ -21,11 +21,14 @@ pub mod animation;
 pub mod core;
 pub mod data_binding;
 pub mod drag_drop;
+pub mod editor_widgets;
+pub mod gpu_renderer;
 pub mod layout;
 pub mod render_commands;
 pub mod rich_text;
 pub mod style;
 pub mod text;
+pub mod ui_framework;
 pub mod widgets;
 
 // ---------------------------------------------------------------------------
@@ -63,6 +66,8 @@ pub use rich_text::{
     RichTextParser, RichTextSpan, ShakeEffect, ShadowParams, TextAlignment, TextEffect,
     TextStyle, TypewriterAnimator, TypewriterEffect, WaveEffect,
 };
+pub use gpu_renderer::UIGpuRenderer;
+pub use ui_framework::{UI, UIInputState, UIStyle, WidgetId};
 
 // ---------------------------------------------------------------------------
 // Error type
