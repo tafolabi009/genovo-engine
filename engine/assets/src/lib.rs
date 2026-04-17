@@ -14,6 +14,7 @@
 //! - [`scene_format`] — Scene file format with entity hierarchies
 
 pub mod asset_bundle;
+pub mod asset_integration;
 pub mod asset_processor;
 pub mod database;
 pub mod font;
@@ -65,4 +66,9 @@ pub use asset_processor::{
 pub use shader_compiler::{
     BindingType, ShaderBinding, ShaderCache, ShaderCompiler, ShaderError, ShaderReflection,
     ShaderStage, SpirVModule, ValidationResult,
+};
+pub use asset_integration::{
+    AssetIntegrator, ColliderData, ColliderGeneration, LoadedAnimation, LoadedMesh,
+    LoadedModel, LoadedSkeleton, LoadOptions, MaterialData, MeshData as IntegrationMeshData,
+    generate_collider,
 };

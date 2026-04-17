@@ -482,8 +482,8 @@ impl StateMachine {
     }
 
     /// Peek at the current state mutably.
-    pub fn current_state_mut(&mut self) -> Option<&mut dyn State> {
-        self.stack.last_mut().map(|s| s.as_mut())
+    pub fn current_state_mut(&mut self) -> Option<&mut (dyn State + 'static)> {
+        self.stack.last_mut().map(|s: &mut Box<dyn State>| -> &mut (dyn State + 'static) { &mut **s })
     }
 
     /// Returns the depth of the state stack.

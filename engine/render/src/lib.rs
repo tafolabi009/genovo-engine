@@ -289,6 +289,11 @@ pub mod mesh_merger;
 pub mod scene_renderer;
 
 // ---------------------------------------------------------------------------
+// Master render loop -- orchestrates all render passes in order.
+// ---------------------------------------------------------------------------
+pub mod render_loop;
+
+// ---------------------------------------------------------------------------
 // GPU rendering feature modules -- real wgpu pipelines with WGSL shaders.
 // ---------------------------------------------------------------------------
 

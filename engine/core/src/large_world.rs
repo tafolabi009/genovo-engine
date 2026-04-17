@@ -2411,6 +2411,13 @@ impl SectorManager {
 
         let mut results = Vec::new();
 
+        // Cache config values to avoid borrow conflict
+        let cfg_active_radius = self.config.active_radius;
+        let cfg_near_radius = self.config.near_radius;
+        let cfg_far_radius = self.config.far_radius;
+        let cfg_dormant_radius = self.config.dormant_radius;
+        let cfg_hysteresis = self.config.hysteresis;
+
         for sector in &mut self.sectors {
             if !sector.active {
                 continue;
@@ -2419,8 +2426,35 @@ impl SectorManager {
             // Update distance.
             sector.camera_distance = WorldPosition::distance(camera_pos, sector.center);
 
-            // Determine new tier.
-            let new_tier = self.tier_for_distance(sector.camera_distance, sector.tier);
+            // Determine new tier (inlined to avoid self borrow conflict).
+            let new_tier = {
+                let distance = sector.camera_distance;
+                let current_tier = sector.tier;
+                let h = cfg_hysteresis;
+                if distance <= cfg_active_radius {
+                    SectorTier::Active
+                } else if distance <= cfg_near_radius {
+                    if current_tier == SectorTier::Active && distance <= cfg_active_radius * h {
+                        SectorTier::Active
+                    } else {
+                        SectorTier::Near
+                    }
+                } else if distance <= cfg_far_radius {
+                    if current_tier == SectorTier::Near && distance <= cfg_near_radius * h {
+                        SectorTier::Near
+                    } else {
+                        SectorTier::Far
+                    }
+                } else if distance <= cfg_dormant_radius {
+                    if current_tier == SectorTier::Far && distance <= cfg_far_radius * h {
+                        SectorTier::Far
+                    } else {
+                        SectorTier::Far
+                    }
+                } else {
+                    SectorTier::Dormant
+                }
+            };
 
             if new_tier != sector.tier {
                 sector.previous_tier = sector.tier;

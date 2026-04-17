@@ -262,10 +262,10 @@ impl ThreadPool {
         }
     }
 
-    pub fn shutdown(self) {
+    pub fn shutdown(mut self) {
         self.shared.shutdown.store(true, Ordering::SeqCst);
         self.shared.condvar.notify_all();
-        for handle in self.workers { let _ = handle.join(); }
+        for handle in self.workers.drain(..) { let _ = handle.join(); }
     }
 }
 

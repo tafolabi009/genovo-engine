@@ -591,6 +591,10 @@ pub struct MpscSendFuture<T> {
     value: Option<T>,
 }
 
+// SAFETY: MpscSendFuture does not contain self-referential data;
+// all fields are independently movable.
+impl<T> Unpin for MpscSendFuture<T> {}
+
 impl<T> std::future::Future for MpscSendFuture<T> {
     type Output = Result<(), ChannelClosedError>;
 
@@ -598,12 +602,13 @@ impl<T> std::future::Future for MpscSendFuture<T> {
         mut self: Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Self::Output> {
-        let mut inner = self.inner.lock().unwrap();
+        let this = self.as_mut().get_mut();
+        let mut inner = this.inner.lock().unwrap();
         if inner.closed {
             return std::task::Poll::Ready(Err(ChannelClosedError));
         }
         if inner.queue.len() < inner.capacity {
-            if let Some(value) = self.value.take() {
+            if let Some(value) = this.value.take() {
                 inner.queue.push_back(value);
                 if let Some(waker) = inner.recv_waker.take() {
                     waker.wake();
@@ -698,6 +703,9 @@ where
     result_b: Option<B::Output>,
 }
 
+// SAFETY: All child futures are boxed/pinned; Join itself is freely movable.
+impl<A: std::future::Future, B: std::future::Future> Unpin for Join<A, B> {}
+
 /// Join two futures, returning both results when complete.
 pub fn join<A, B>(a: A, b: B) -> Join<A, B>
 where
@@ -766,6 +774,9 @@ where
     result_b: Option<B::Output>,
     result_c: Option<C::Output>,
 }
+
+// SAFETY: All child futures are boxed/pinned; Join3 itself is freely movable.
+impl<A: std::future::Future, B: std::future::Future, C: std::future::Future> Unpin for Join3<A, B, C> {}
 
 /// Join three futures, returning all results when every future completes.
 pub fn join3<A, B, C>(a: A, b: B, c: C) -> Join3<A, B, C>
@@ -904,6 +915,9 @@ pub struct JoinAll<F: std::future::Future> {
     futures: Vec<Option<Pin<Box<F>>>>,
     results: Vec<Option<F::Output>>,
 }
+
+// SAFETY: All child futures are boxed/pinned; JoinAll itself is freely movable.
+impl<F: std::future::Future> Unpin for JoinAll<F> {}
 
 /// Join a collection of futures, returning all results.
 pub fn join_all<F: std::future::Future>(futures: Vec<F>) -> JoinAll<F> {

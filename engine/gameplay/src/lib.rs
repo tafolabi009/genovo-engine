@@ -45,6 +45,10 @@ pub mod ai_director;
 pub mod building_system;
 pub mod camera_controller;
 pub mod character_controller;
+
+// Game world: unified container for ECS + physics + scene graph with
+// high-level spawn/despawn/query API and tick updates.
+pub mod game_world;
 pub mod companion_ai;
 pub mod cooking_system;
 pub mod crafting;

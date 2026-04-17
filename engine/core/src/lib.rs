@@ -8,6 +8,14 @@
 pub mod collections;
 pub mod color;
 pub mod compression;
+
+// Centralized input: keyboard/mouse/gamepad polling, action mapping,
+// axis mapping with dead zones, input consumed flag, input recording.
+pub mod input_system;
+
+// Engine runtime: subsystem lifecycle, fixed timestep + variable render,
+// spiral-of-death protection, shutdown sequence, frame timing.
+pub mod engine_runtime;
 pub mod crypto;
 pub mod curve;
 pub mod error;
@@ -224,3 +232,15 @@ pub mod command_buffer;
 
 /// Unique identifier for engine objects.
 pub type ObjectId = uuid::Uuid;
+
+// Re-exports for input system.
+pub use input_system::{
+    AxisMapping, GamepadAxis, GamepadButton, InputSystem, KeyBinding, KeyCode,
+    MouseButton, RecordedEvent, RecordedInput,
+};
+
+// Re-exports for engine runtime.
+pub use engine_runtime::{
+    EngineRuntime, FrameTiming, RuntimeConfig, RuntimeStats, SubsystemId,
+    SubsystemRecord, SubsystemState,
+};

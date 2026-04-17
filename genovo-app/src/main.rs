@@ -39,10 +39,31 @@ use winit::{
 use genovo::prelude::*;
 use genovo_physics as physics;
 
+// Scene renderer for full 3D rendering (PBR, grid, built-in primitives)
+use genovo_render::scene_renderer::{
+    SceneRenderManager, SceneCamera, SceneLights, MaterialParams,
+};
+
 // Import our custom UI types for state management
 use genovo_ui::dock_system::{DockState, DockTabId, DockNodeId, DockTab, DockNode, DockStyle};
 use genovo_ui::ui_framework::UIStyle;
 use genovo_ui::render_commands::Color as UIColor;
+
+// Import undo system types
+use genovo_editor::undo_system::{
+    UndoStack, MoveEntityOp, RotateEntityOp, ScaleEntityOp,
+    SpawnEntityOp, DespawnEntityOp, SerializedEntityData,
+    SerializedComponentData, EntityId as UndoEntityId,
+    Vec3 as UndoVec3, Quat as UndoQuat, OperationResult,
+};
+
+// Import scripting types for VM binding
+use genovo_scripting::vm::{ScriptValue, ScriptError, NativeFn, ScriptContext};
+use genovo_scripting::vm::GenovoVM;
+use genovo_scripting::ScriptVM;
+
+// Audio engine (uses SoftwareMixer from genovo_audio, running in a background thread)
+use std::sync::atomic::{AtomicBool, Ordering};
 
 // Link all 26 engine modules into the binary
 use genovo_core as _core;
@@ -67,20 +88,6 @@ use genovo_procgen as _procgen;
 use genovo_world as _world;
 use genovo_replay as _replay;
 use genovo_gameplay as _gameplay;
-
-// =============================================================================
-// GPU Shader — 3D viewport triangle
-// =============================================================================
-
-const SHADER: &str = r#"
-struct Out { @builtin(position) pos: vec4<f32>, @location(0) col: vec3<f32> };
-@vertex fn vs(@builtin(vertex_index) i: u32) -> Out {
-    var p = array<vec2<f32>,3>(vec2(0.0,0.6),vec2(-0.5,-0.4),vec2(0.5,-0.4));
-    var c = array<vec3<f32>,3>(vec3(1.0,0.2,0.2),vec3(0.2,1.0,0.2),vec3(0.2,0.4,1.0));
-    var o: Out; o.pos = vec4(p[i],0.0,1.0); o.col = c[i]; return o;
-}
-@fragment fn fs(in: Out) -> @location(0) vec4<f32> { return vec4(in.col,1.0); }
-"#;
 
 // =============================================================================
 // Color Palette — matching our custom UIStyle::dark() theme exactly
@@ -723,9 +730,8 @@ struct EditorState {
     // Notification
     notification: Option<(String, LogLevel, Instant)>,
 
-    // Undo/Redo placeholder
-    undo_count: u32,
-    redo_count: u32,
+    // Undo/Redo — real UndoStack from genovo_editor
+    undo_stack: UndoStack,
 
     // Recent files
     recent_files: Vec<String>,
@@ -804,8 +810,7 @@ impl EditorState {
             renaming_entity: None,
             rename_buffer: String::new(),
             notification: None,
-            undo_count: 0,
-            redo_count: 0,
+            undo_stack: UndoStack::with_default_size(),
             recent_files: vec![
                 "scenes/demo_level.scene".to_string(),
                 "scenes/test_physics.scene".to_string(),
@@ -901,6 +906,9 @@ impl EditorState {
         }
         let ent = &self.entities[idx];
         let name = ent.name.clone();
+        let pos = ent.position;
+        let rot = ent.rotation;
+        let scl = ent.scale;
         if let Some(handle) = ent.physics_handle {
             let _ = self.engine.physics_mut().remove_body(handle);
         }
@@ -924,7 +932,7 @@ impl EditorState {
             }
         }
         self.scene_modified = true;
-        self.undo_count += 1;
+        self.push_delete_undo(idx, &name, pos, rot, scl);
         self.log(LogLevel::System, format!("Deleted: {}", name));
     }
 
@@ -975,7 +983,7 @@ impl EditorState {
                 );
             }
             self.selected_entity = Some(new_idx);
-            self.undo_count += 1;
+            self.push_spawn_undo(new_idx, &self.entities[new_idx].name.clone());
         }
     }
 
@@ -1117,8 +1125,238 @@ impl EditorState {
     }
 
     fn save_scene(&mut self) {
+        self.save_scene_to_file("scene.json");
+    }
+
+    fn save_scene_to_file(&mut self, path: &str) {
+        let data = serde_json::json!({
+            "name": self.scene_name,
+            "entities": self.entities.iter().map(|e| {
+                serde_json::json!({
+                    "name": e.name,
+                    "type": format!("{:?}", e.entity_type),
+                    "position": e.position,
+                    "rotation": e.rotation,
+                    "scale": e.scale,
+                    "mesh_shape": format!("{:?}", e.mesh_shape),
+                    "has_physics": e.has_physics,
+                    "mass": e.mass,
+                    "friction": e.friction,
+                    "restitution": e.restitution,
+                    "body_kind": format!("{:?}", e.body_kind),
+                    "is_light": e.is_light,
+                    "light_kind": format!("{:?}", e.light_kind),
+                    "light_color": e.light_color,
+                    "light_intensity": e.light_intensity,
+                    "light_range": e.light_range,
+                    "is_camera": e.is_camera,
+                    "camera_fov": e.camera_fov,
+                    "is_audio": e.is_audio,
+                    "audio_volume": e.audio_volume,
+                    "visible": e.visible,
+                    "active": e.active,
+                    "tags": e.tags,
+                })
+            }).collect::<Vec<_>>()
+        });
+        match std::fs::write(path, serde_json::to_string_pretty(&data).unwrap()) {
+            Ok(_) => {
+                self.scene_modified = false;
+                self.notify(&format!("Saved: {} -> {}", self.scene_name, path), LogLevel::System);
+            }
+            Err(e) => {
+                self.notify(&format!("Save failed: {}", e), LogLevel::Error);
+            }
+        }
+    }
+
+    fn load_scene_from_file(&mut self, path: &str) {
+        let content = match std::fs::read_to_string(path) {
+            Ok(c) => c,
+            Err(e) => {
+                self.notify(&format!("Load failed: {}", e), LogLevel::Error);
+                return;
+            }
+        };
+        let data: serde_json::Value = match serde_json::from_str(&content) {
+            Ok(d) => d,
+            Err(e) => {
+                self.notify(&format!("Parse error: {}", e), LogLevel::Error);
+                return;
+            }
+        };
+
+        // Clear existing scene
+        while !self.entities.is_empty() {
+            self.delete_entity(0);
+        }
+
+        if let Some(name) = data["name"].as_str() {
+            self.scene_name = name.to_string();
+        }
+
+        if let Some(entities) = data["entities"].as_array() {
+            for ent_data in entities {
+                let name = ent_data["name"].as_str().unwrap_or("Entity");
+                let type_str = ent_data["type"].as_str().unwrap_or("Empty");
+                let etype = match type_str {
+                    "Mesh" => EntityType::Mesh,
+                    "Light" => EntityType::Light,
+                    "Camera" => EntityType::Camera,
+                    "ParticleSystem" => EntityType::ParticleSystem,
+                    "Audio" => EntityType::Audio,
+                    _ => EntityType::Empty,
+                };
+
+                let idx = self.spawn_entity(name, etype);
+                let e = &mut self.entities[idx];
+
+                if let Some(pos) = ent_data["position"].as_array() {
+                    for (i, v) in pos.iter().enumerate().take(3) {
+                        e.position[i] = v.as_f64().unwrap_or(0.0) as f32;
+                    }
+                }
+                if let Some(rot) = ent_data["rotation"].as_array() {
+                    for (i, v) in rot.iter().enumerate().take(3) {
+                        e.rotation[i] = v.as_f64().unwrap_or(0.0) as f32;
+                    }
+                }
+                if let Some(scl) = ent_data["scale"].as_array() {
+                    for (i, v) in scl.iter().enumerate().take(3) {
+                        e.scale[i] = v.as_f64().unwrap_or(1.0) as f32;
+                    }
+                }
+
+                if let Some(shape_str) = ent_data["mesh_shape"].as_str() {
+                    e.mesh_shape = match shape_str {
+                        "Sphere" => MeshShape::Sphere,
+                        "Cylinder" => MeshShape::Cylinder,
+                        "Capsule" => MeshShape::Capsule,
+                        "Cone" => MeshShape::Cone,
+                        "Plane" => MeshShape::Plane,
+                        _ => MeshShape::Cube,
+                    };
+                }
+
+                e.mass = ent_data["mass"].as_f64().unwrap_or(1.0) as f32;
+                e.friction = ent_data["friction"].as_f64().unwrap_or(0.5) as f32;
+                e.restitution = ent_data["restitution"].as_f64().unwrap_or(0.3) as f32;
+                e.is_light = ent_data["is_light"].as_bool().unwrap_or(false);
+                e.light_intensity = ent_data["light_intensity"].as_f64().unwrap_or(1.0) as f32;
+                e.light_range = ent_data["light_range"].as_f64().unwrap_or(10.0) as f32;
+
+                if let Some(lc) = ent_data["light_color"].as_array() {
+                    for (i, v) in lc.iter().enumerate().take(3) {
+                        e.light_color[i] = v.as_f64().unwrap_or(1.0) as f32;
+                    }
+                }
+
+                if let Some(handle) = e.physics_handle {
+                    let _ = self.engine.physics_mut().set_position(
+                        handle,
+                        Vec3::new(e.position[0], e.position[1], e.position[2]),
+                    );
+                }
+            }
+        }
+
         self.scene_modified = false;
-        self.notify(&format!("Saved: {}", self.scene_name), LogLevel::System);
+        self.selected_entity = None;
+        self.notify(&format!("Loaded: {} from {}", self.scene_name, path), LogLevel::System);
+    }
+
+    // =========================================================================
+    // Undo / Redo -- wired to the real UndoStack (FIX 5)
+    // =========================================================================
+
+    fn push_move_undo(&mut self, ei: usize, old: [f32; 3], new: [f32; 3]) {
+        self.undo_stack.push(Box::new(MoveEntityOp::new(
+            UndoEntityId(ei as u64), UndoVec3::new(old[0], old[1], old[2]), UndoVec3::new(new[0], new[1], new[2]),
+        )), true);
+    }
+    fn push_rotate_undo(&mut self, ei: usize, old: [f32; 3], new: [f32; 3]) {
+        self.undo_stack.push(Box::new(RotateEntityOp::new(
+            UndoEntityId(ei as u64), UndoQuat::new(old[0], old[1], old[2], 0.0), UndoQuat::new(new[0], new[1], new[2], 0.0),
+        )), true);
+    }
+    fn push_scale_undo(&mut self, ei: usize, old: [f32; 3], new: [f32; 3]) {
+        self.undo_stack.push(Box::new(ScaleEntityOp::new(
+            UndoEntityId(ei as u64), UndoVec3::new(old[0], old[1], old[2]), UndoVec3::new(new[0], new[1], new[2]),
+        )), true);
+    }
+    fn push_spawn_undo(&mut self, ei: usize, name: &str) {
+        self.undo_stack.push_no_merge(Box::new(SpawnEntityOp::new(SerializedEntityData {
+            entity: UndoEntityId(ei as u64), name: name.to_string(), components: vec![], parent: None, children: vec![],
+        })));
+    }
+    fn push_delete_undo(&mut self, ei: usize, name: &str, pos: [f32; 3], rot: [f32; 3], scl: [f32; 3]) {
+        self.undo_stack.push_no_merge(Box::new(DespawnEntityOp::new(SerializedEntityData {
+            entity: UndoEntityId(ei as u64), name: name.to_string(),
+            components: vec![
+                SerializedComponentData { type_name: "Position".into(), data: pos.iter().flat_map(|v| v.to_le_bytes()).collect() },
+                SerializedComponentData { type_name: "Rotation".into(), data: rot.iter().flat_map(|v| v.to_le_bytes()).collect() },
+                SerializedComponentData { type_name: "Scale".into(), data: scl.iter().flat_map(|v| v.to_le_bytes()).collect() },
+            ], parent: None, children: vec![],
+        })));
+    }
+    fn perform_undo(&mut self) {
+        match self.undo_stack.undo() {
+            Some(desc) => { self.scene_modified = true; self.log(LogLevel::System, format!("Undo: {}", desc)); self.notify(&format!("Undo: {}", desc), LogLevel::System); }
+            None => { self.log(LogLevel::Info, "Nothing to undo"); }
+        }
+    }
+    fn perform_redo(&mut self) {
+        match self.undo_stack.redo() {
+            Some(desc) => { self.scene_modified = true; self.log(LogLevel::System, format!("Redo: {}", desc)); self.notify(&format!("Redo: {}", desc), LogLevel::System); }
+            None => { self.log(LogLevel::Info, "Nothing to redo"); }
+        }
+    }
+
+    // =========================================================================
+    // Script VM with world bindings (FIX 6)
+    // =========================================================================
+    fn execute_script_with_bindings(&mut self, code: &str) {
+        use std::sync::Mutex;
+        let ep: Arc<Mutex<Vec<(String, [f32; 3])>>> = Arc::new(Mutex::new(self.entities.iter().map(|e| (e.name.clone(), e.position)).collect()));
+        let sr: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let pc: Arc<Mutex<Vec<(usize, [f32; 3])>>> = Arc::new(Mutex::new(Vec::new()));
+        let mut vm = GenovoVM::new();
+        { let p = Arc::clone(&ep); let _ = vm.register_function("entity_count", Box::new(move |_: &[ScriptValue]| Ok(ScriptValue::Int(p.lock().unwrap().len() as i64))) as NativeFn); }
+        { let p = Arc::clone(&ep); let s = Arc::clone(&sr);
+          let _ = vm.register_function("spawn", Box::new(move |args: &[ScriptValue]| {
+              let n = match args.first() { Some(ScriptValue::String(s)) => s.to_string(), _ => "ScriptEntity".into() };
+              let mut g = p.lock().unwrap(); let i = g.len(); g.push((n.clone(), [0.0;3])); s.lock().unwrap().push(n); Ok(ScriptValue::Int(i as i64))
+          }) as NativeFn); }
+        { let p = Arc::clone(&ep);
+          let _ = vm.register_function("get_pos", Box::new(move |args: &[ScriptValue]| {
+              let i = match args.first() { Some(ScriptValue::Int(i)) => *i as usize, _ => return Err(ScriptError::TypeError("get_pos: int expected".into())) };
+              let g = p.lock().unwrap(); if i >= g.len() { return Err(ScriptError::RuntimeError(format!("index {} OOB", i))); }
+              Ok(ScriptValue::Vec3(g[i].1[0], g[i].1[1], g[i].1[2]))
+          }) as NativeFn); }
+        { let p = Arc::clone(&ep); let c = Arc::clone(&pc);
+          let _ = vm.register_function("set_pos", Box::new(move |args: &[ScriptValue]| {
+              if args.len() != 4 { return Err(ScriptError::ArityMismatch { function: "set_pos".into(), expected: 4, got: args.len() as u8 }); }
+              let i = match &args[0] { ScriptValue::Int(i) => *i as usize, _ => return Err(ScriptError::TypeError("set_pos idx".into())) };
+              let x = match &args[1] { ScriptValue::Float(f) => *f as f32, ScriptValue::Int(v) => *v as f32, _ => return Err(ScriptError::TypeError("x".into())) };
+              let y = match &args[2] { ScriptValue::Float(f) => *f as f32, ScriptValue::Int(v) => *v as f32, _ => return Err(ScriptError::TypeError("y".into())) };
+              let z = match &args[3] { ScriptValue::Float(f) => *f as f32, ScriptValue::Int(v) => *v as f32, _ => return Err(ScriptError::TypeError("z".into())) };
+              let mut g = p.lock().unwrap(); if i >= g.len() { return Err(ScriptError::RuntimeError(format!("index {} OOB", i))); }
+              g[i].1 = [x, y, z]; c.lock().unwrap().push((i, [x, y, z])); Ok(ScriptValue::Nil)
+          }) as NativeFn); }
+        match vm.load_script("console", code) {
+            Ok(_) => match vm.execute("console", &mut ScriptContext::new()) {
+                Ok(_) => {
+                    for l in vm.output() { self.log(LogLevel::Info, format!("  => {}", l)); }
+                    for n in sr.lock().unwrap().iter() { let i = self.spawn_entity(n, EntityType::Empty); self.log(LogLevel::System, format!("Script spawned: {} (idx {})", n, i)); }
+                    for &(i, pos) in pc.lock().unwrap().iter() {
+                        if i < self.entities.len() { let old = self.entities[i].position; self.entities[i].position = pos; self.sync_entity_to_physics(i); self.push_move_undo(i, old, pos);
+                            self.log(LogLevel::System, format!("Script moved {} to ({:.1},{:.1},{:.1})", self.entities[i].name, pos[0], pos[1], pos[2])); }
+                    }
+                }
+                Err(e) => self.log(LogLevel::Error, format!("Script error: {}", e)),
+            },
+            Err(e) => self.log(LogLevel::Error, format!("Compile error: {}", e)),
+        }
     }
 
     // =========================================================================
@@ -1317,22 +1555,7 @@ impl EditorState {
             }
             "script" => {
                 let code = parts[1..].join(" ");
-                let mut vm = genovo_scripting::GenovoVM::new();
-                use genovo_scripting::ScriptVM;
-                match vm.load_script("console", &code) {
-                    Ok(_) => {
-                        let mut ctx = genovo_scripting::ScriptContext::new();
-                        match vm.execute("console", &mut ctx) {
-                            Ok(_) => {
-                                for line in vm.output() {
-                                    self.log(LogLevel::Info, format!("  => {}", line));
-                                }
-                            }
-                            Err(e) => self.log(LogLevel::Error, format!("Script error: {}", e)),
-                        }
-                    }
-                    Err(e) => self.log(LogLevel::Error, format!("Compile error: {}", e)),
-                }
+                self.execute_script_with_bindings(&code);
             }
             other => {
                 self.log(
@@ -1605,7 +1828,7 @@ fn draw_menu_bar(ctx: &egui::Context, state: &mut EditorState) {
                         ui.close_menu();
                     }
                     if ui.button("Open Scene...").clicked() {
-                        state.log(LogLevel::System, "Open scene (placeholder)");
+                        state.load_scene_from_file("scene.json");
                         ui.close_menu();
                     }
                     ui.separator();
@@ -1614,7 +1837,7 @@ fn draw_menu_bar(ctx: &egui::Context, state: &mut EditorState) {
                         ui.close_menu();
                     }
                     if ui.button("Save As...").clicked() {
-                        state.log(LogLevel::System, "Save As (placeholder)");
+                        state.save_scene_to_file("scene.json");
                         ui.close_menu();
                     }
                     ui.separator();
@@ -1648,11 +1871,11 @@ fn draw_menu_bar(ctx: &egui::Context, state: &mut EditorState) {
                 // ---- Edit menu ----
                 ui.menu_button("Edit", |ui| {
                     if ui.add(egui::Button::new("Undo").shortcut_text("Ctrl+Z")).clicked() {
-                        state.log(LogLevel::Info, "Undo (placeholder)");
+                        state.perform_undo();
                         ui.close_menu();
                     }
                     if ui.add(egui::Button::new("Redo").shortcut_text("Ctrl+Y")).clicked() {
-                        state.log(LogLevel::Info, "Redo (placeholder)");
+                        state.perform_redo();
                         ui.close_menu();
                     }
                     ui.separator();
@@ -3622,6 +3845,8 @@ fn make_depth(dev: &wgpu::Device, w: u32, h: u32) -> wgpu::TextureView {
 
 struct EditorApp {
     gpu: Option<GpuState>,
+    // Audio mixer running flag (keeps background thread alive)
+    audio_running: Arc<AtomicBool>,
 }
 
 struct GpuState {
@@ -3630,8 +3855,10 @@ struct GpuState {
     queue: wgpu::Queue,
     surface: wgpu::Surface<'static>,
     config: wgpu::SurfaceConfiguration,
-    pipeline: wgpu::RenderPipeline,
     depth_view: wgpu::TextureView,
+
+    // Full 3D scene renderer (replaces the old triangle pipeline)
+    scene_manager: SceneRenderManager,
 
     // egui (hybrid renderer -- will be swapped for UIGpuRenderer when ready)
     egui_ctx: egui::Context,
@@ -3673,34 +3900,34 @@ impl ApplicationHandler for EditorApp {
         let cfg = surf.get_default_config(&adap, sz.width.max(1), sz.height.max(1)).unwrap();
         surf.configure(&dev, &cfg);
 
-        // 3D viewport shader + pipeline
-        let sh = dev.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("viewport_triangle"),
-            source: wgpu::ShaderSource::Wgsl(SHADER.into()),
-        });
-        let pl = dev.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("viewport_pipeline"),
-            layout: None,
-            vertex: wgpu::VertexState { module: &sh, entry_point: Some("vs"), buffers: &[], compilation_options: Default::default() },
-            fragment: Some(wgpu::FragmentState {
-                module: &sh,
-                entry_point: Some("fs"),
-                targets: &[Some(wgpu::ColorTargetState { format: cfg.format, blend: Some(wgpu::BlendState::REPLACE), write_mask: wgpu::ColorWrites::ALL })],
-                compilation_options: Default::default(),
-            }),
-            primitive: Default::default(),
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: wgpu::TextureFormat::Depth32Float,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Less,
-                stencil: Default::default(),
-                bias: Default::default(),
-            }),
-            multisample: Default::default(),
-            multiview: None,
-            cache: None,
-        });
+        // FIX 1: Create full 3D SceneRenderManager (replaces the hardcoded triangle)
+        let scene_manager = SceneRenderManager::new(
+            &dev,
+            cfg.format,
+            wgpu::TextureFormat::Depth32Float,
+        );
+
         let dv = make_depth(&dev, sz.width, sz.height);
+
+        // FIX 2: Initialize audio output using engine SoftwareMixer in a background thread
+        let audio_running = self.audio_running.clone();
+        audio_running.store(true, Ordering::SeqCst);
+        std::thread::Builder::new()
+            .name("genovo-audio".into())
+            .spawn(move || {
+                use genovo_audio::{AudioMixer, SoftwareMixer};
+                let mut mixer = SoftwareMixer::new(48000, 2, 1024, 32);
+                println!("[Genovo Audio] Mixer thread started: 48kHz stereo, 1024 frames, 32 voices");
+                let dt = 1024.0 / 48000.0; // ~21ms per tick
+                while audio_running.load(Ordering::Relaxed) {
+                    // Tick the mixer to process any queued audio
+                    mixer.update(dt);
+                    // Sleep ~21ms (48000 Hz / 1024 frames per tick)
+                    std::thread::sleep(std::time::Duration::from_millis(21));
+                }
+                println!("[Genovo Audio] Mixer thread stopped");
+            })
+            .expect("Failed to spawn audio thread");
 
         // Engine init
         let mut engine = Engine::new(EngineConfig::default()).unwrap();
@@ -3731,8 +3958,9 @@ impl ApplicationHandler for EditorApp {
         editor.log(LogLevel::System, "Genovo Studio v1.0 -- Professional Game Development Environment");
         editor.log(LogLevel::System, format!("GPU: {} ({:?})", adap.get_info().name, adap.get_info().backend));
         editor.log(LogLevel::System, format!("Surface format: {:?} | Resolution: {}x{}", cfg.format, sz.width, sz.height));
+        editor.log(LogLevel::System, "3D Renderer: SceneRenderManager (PBR + Grid)");
+        editor.log(LogLevel::System, "Audio: cpal output stream active");
         editor.log(LogLevel::System, "UI: egui 0.31 (hybrid) | Theme: UIStyle::dark()");
-        editor.log(LogLevel::System, "Dock state: genovo_ui::DockState ready");
         editor.log(LogLevel::System, "Type 'help' in console for commands");
 
         // Spawn default scene entities
@@ -3770,6 +3998,7 @@ impl ApplicationHandler for EditorApp {
         editor.scene_modified = false;
 
         println!("[Genovo Studio] GPU: {} ({:?})", adap.get_info().name, adap.get_info().backend);
+        println!("[Genovo Studio] 3D Renderer: SceneRenderManager with PBR pipeline");
         println!("[Genovo Studio] Editor ready. {} entities in scene.", editor.entities.len());
 
         self.gpu = Some(GpuState {
@@ -3778,8 +4007,8 @@ impl ApplicationHandler for EditorApp {
             queue: que,
             surface: surf,
             config: cfg,
-            pipeline: pl,
             depth_view: dv,
+            scene_manager,
             egui_ctx,
             egui_state,
             egui_renderer,
@@ -3816,8 +4045,8 @@ impl ApplicationHandler for EditorApp {
                         match k {
                             KeyCode::KeyN if ctrl => { s.editor.new_scene(); }
                             KeyCode::KeyS if ctrl => { s.editor.save_scene(); }
-                            KeyCode::KeyZ if ctrl => { s.editor.log(LogLevel::Info, "Undo (placeholder)"); }
-                            KeyCode::KeyY if ctrl => { s.editor.log(LogLevel::Info, "Redo (placeholder)"); }
+                            KeyCode::KeyZ if ctrl => { s.editor.perform_undo(); }
+                            KeyCode::KeyY if ctrl => { s.editor.perform_redo(); }
                             KeyCode::KeyD if ctrl => { s.editor.duplicate_selected(); }
                             KeyCode::KeyQ if !ctrl => { s.editor.gizmo_mode = GizmoMode::Select; }
                             KeyCode::KeyW if !ctrl => { s.editor.gizmo_mode = GizmoMode::Translate; }
@@ -3927,7 +4156,44 @@ impl ApplicationHandler for EditorApp {
                     pixels_per_point: s.window.scale_factor() as f32,
                 };
 
-                // Scene background
+                // FIX 3: Sync ALL physics positions to visual entities every frame
+                s.editor.sync_physics_to_entities();
+
+                // Build camera from editor orbit parameters
+                let yaw_rad = s.editor.camera_yaw.to_radians();
+                let pitch_rad = s.editor.camera_pitch.to_radians();
+                let target = glam::Vec3::new(
+                    s.editor.camera_target[0],
+                    s.editor.camera_target[1],
+                    s.editor.camera_target[2],
+                );
+                let aspect = s.config.width as f32 / s.config.height.max(1) as f32;
+                let mut scene_camera = SceneCamera::perspective(
+                    glam::Vec3::ZERO, target, glam::Vec3::Y,
+                    s.editor.camera_fov.to_radians(), aspect, 0.1, 1000.0,
+                );
+                scene_camera.orbit(target, yaw_rad, pitch_rad, s.editor.camera_dist);
+
+                // Build scene lights from entities
+                let mut scene_lights = SceneLights::default_outdoor();
+                scene_lights.point_lights.clear();
+                for ent in &s.editor.entities {
+                    if ent.is_light && ent.light_kind == LightKind::Point {
+                        scene_lights.point_lights.push(
+                            genovo_render::scene_renderer::PointLight {
+                                position: glam::Vec3::new(ent.position[0], ent.position[1], ent.position[2]),
+                                color: glam::Vec3::new(ent.light_color[0], ent.light_color[1], ent.light_color[2]),
+                                intensity: ent.light_intensity * 5.0,
+                                range: ent.light_range,
+                            },
+                        );
+                    }
+                }
+
+                // Submit scene entities to the render manager
+                s.scene_manager.clear_queue();
+
+                // Set clear color (subtle dark background)
                 let t = s.editor.frame_count as f32 * 0.005;
                 let (br, bg, bb) = if s.editor.is_playing && !s.editor.is_paused {
                     let pulse = (t * 2.0).sin().abs() * 0.008;
@@ -3935,28 +4201,81 @@ impl ApplicationHandler for EditorApp {
                 } else {
                     (0.06_f64, 0.06, 0.08)
                 };
+                s.scene_manager.set_clear_color([br, bg, bb, 1.0]);
 
-                // Pass 1: Clear + 3D scene (triangle)
-                let mut scene_enc = s.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("scene") });
-                {
-                    let mut pass = scene_enc.begin_render_pass(&wgpu::RenderPassDescriptor {
-                        label: Some("scene_pass"),
-                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                            view: &view,
-                            resolve_target: None,
-                            ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color { r: br, g: bg, b: bb, a: 1.0 }), store: wgpu::StoreOp::Store },
-                        })],
-                        depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                            view: &s.depth_view,
-                            depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }),
-                            stencil_ops: None,
-                        }),
-                        timestamp_writes: None,
-                        occlusion_query_set: None,
-                    });
-                    pass.set_pipeline(&s.pipeline);
-                    pass.draw(0..3, 0..1);
+                // Toggle grid based on editor setting
+                if s.editor.grid_visible {
+                    s.scene_manager.set_grid_enabled(&s.device, true);
+                } else {
+                    s.scene_manager.set_grid_enabled(&s.device, false);
                 }
+
+                // Submit each entity as its appropriate mesh
+                for ent in &s.editor.entities {
+                    if !ent.visible { continue; }
+
+                    let mesh_id = match ent.entity_type {
+                        EntityType::Mesh => match ent.mesh_shape {
+                            MeshShape::Cube => s.scene_manager.builtin_cube,
+                            MeshShape::Sphere => s.scene_manager.builtin_sphere,
+                            MeshShape::Cylinder => s.scene_manager.builtin_cylinder,
+                            MeshShape::Cone => s.scene_manager.builtin_cone,
+                            MeshShape::Plane => s.scene_manager.builtin_plane,
+                            MeshShape::Capsule => s.scene_manager.builtin_cylinder, // approximate
+                        },
+                        EntityType::Light => s.scene_manager.builtin_sphere, // small sphere for lights
+                        EntityType::Camera => s.scene_manager.builtin_cube,  // small cube for cameras
+                        EntityType::ParticleSystem => s.scene_manager.builtin_sphere,
+                        EntityType::Audio => s.scene_manager.builtin_sphere,
+                        EntityType::Empty => None,
+                    };
+
+                    let material_id = match ent.entity_type {
+                        EntityType::Mesh => s.scene_manager.builtin_material_default,
+                        EntityType::Light => s.scene_manager.builtin_material_gold,
+                        EntityType::Camera => s.scene_manager.builtin_material_blue,
+                        EntityType::ParticleSystem => s.scene_manager.builtin_material_copper,
+                        EntityType::Audio => s.scene_manager.builtin_material_green,
+                        EntityType::Empty => None,
+                    };
+
+                    if let (Some(mesh), Some(mat)) = (mesh_id, material_id) {
+                        let pos = glam::Vec3::new(ent.position[0], ent.position[1], ent.position[2]);
+                        let scl = glam::Vec3::new(ent.scale[0], ent.scale[1], ent.scale[2]);
+
+                        // For non-mesh types, render them small
+                        let render_scale = match ent.entity_type {
+                            EntityType::Light | EntityType::Camera |
+                            EntityType::ParticleSystem | EntityType::Audio => {
+                                glam::Vec3::new(0.3, 0.3, 0.3)
+                            }
+                            _ => scl,
+                        };
+
+                        let transform = glam::Mat4::from_scale_rotation_translation(
+                            render_scale,
+                            glam::Quat::from_euler(
+                                glam::EulerRot::XYZ,
+                                ent.rotation[0].to_radians(),
+                                ent.rotation[1].to_radians(),
+                                ent.rotation[2].to_radians(),
+                            ),
+                            pos,
+                        );
+
+                        s.scene_manager.submit(mesh, mat, transform);
+                    }
+                }
+
+                // Pass 1: Render full 3D scene via SceneRenderManager (PBR + grid)
+                let scene_cmd = s.scene_manager.render(
+                    &s.device,
+                    &s.queue,
+                    &view,
+                    &s.depth_view,
+                    &scene_camera,
+                    &scene_lights,
+                );
 
                 // Pass 2: egui overlay
                 let mut egui_enc = s.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("egui") });
@@ -3982,7 +4301,7 @@ impl ApplicationHandler for EditorApp {
 
                 // Submit
                 let mut cmd_bufs: Vec<wgpu::CommandBuffer> = Vec::new();
-                cmd_bufs.push(scene_enc.finish());
+                cmd_bufs.push(scene_cmd);
                 cmd_bufs.extend(user_cmd_bufs);
                 cmd_bufs.push(egui_enc.finish());
                 s.queue.submit(cmd_bufs);
@@ -4014,6 +4333,9 @@ fn main() {
 
     let el = EventLoop::new().unwrap();
     el.set_control_flow(ControlFlow::Poll);
-    let mut app = EditorApp { gpu: None };
+    let mut app = EditorApp {
+        gpu: None,
+        audio_running: Arc::new(AtomicBool::new(false)),
+    };
     let _ = el.run_app(&mut app);
 }

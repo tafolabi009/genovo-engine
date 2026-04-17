@@ -43,3 +43,6 @@ egui_plot = "0.31"
 # egui_dock = "0.16"  # not available offline — using egui panels instead
 env_logger = "0.11"
 pollster = "0.4"
+serde_json = { workspace = true }
+glam = { workspace = true }
+bytemuck = { workspace = true }
