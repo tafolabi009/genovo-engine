@@ -53,6 +53,9 @@ pub mod optimizer;
 pub mod stdlib;
 pub mod type_system;
 pub mod vm;
+pub mod profiler_script;
+pub mod repl;
+pub mod sandbox;
 
 pub use bindings::{BindingRegistry, ScriptBindable, ScriptComponent, ScriptSystem};
 pub use coroutines::{
@@ -88,6 +91,19 @@ pub use ffi_bridge::{
     ArgDescriptor, AsyncCallId, AsyncCallStatus, FfiBridge, FfiBridgeStats,
     FfiError, FfiResult, FfiValue, FunctionDescriptor, NativeHandle,
     PendingCallback, ScriptCallback,
+};
+
+pub use profiler_script::{
+    CallGraphEdge, FunctionProfile, Hotspot, HotspotSeverity, MemoryTracker,
+    OpcodeProfile, ProfilerState, ScriptProfiler,
+};
+pub use repl::{
+    CompletionProvider, History, MultiLineInput, OutputFormatter, Repl,
+    ReplCommand, ReplError, ReplLineResult, ReplResult, ReplValue,
+};
+pub use sandbox::{
+    AuditEntry, Operation, PermissionLevel, ResourceQuota, ResourceUsage,
+    Sandbox, SandboxCheck, SandboxManager, SandboxPolicy, SandboxViolation,
 };
 
 /// Convenience prelude for common imports.

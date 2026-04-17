@@ -25,6 +25,9 @@ pub mod sync;
 pub mod transport;
 pub mod voice;
 pub mod web_socket;
+pub mod connection_quality;
+pub mod nat_traversal;
+pub mod relay_server;
 
 pub use prediction::{
     EntityHitbox, Hit, InputBuffer, InterpolationBuffer, LagCompensation,
@@ -98,4 +101,18 @@ pub use web_socket::{
 pub use network_stats::{
     ChannelStats, GraphData, NetworkQuality, NetworkStatsCollector,
     NetworkStatsSummary, RollingSamples, RttHistogram, StatsSnapshot,
+};
+pub use connection_quality::{
+    ConnectionQualityAssessor, ConnectionQualityConfig, PingGraph, PingGraphPoint,
+    QualityIndicator, QualitySnapshot, Recommendation,
+};
+pub use nat_traversal::{
+    CandidateType, HolePunchCoordinator, HolePunchSession, HolePunchState,
+    IceCandidate, NatDetectionResult, NatType, StunAttribute, StunAttributeType,
+    StunClass, StunMessage, StunMessageType, StunMethod, STUN_MAGIC_COOKIE,
+};
+pub use relay_server::{
+    Allocation, AllocationId, AllocateResult, AuthResult, BandwidthThrottle,
+    ConnectionPairing, PairingId, RelayClientId, RelayCredentials, RelayError,
+    RelayMessage, RelayServer, RelayServerConfig, RelayStats, SimpleAuthenticator,
 };

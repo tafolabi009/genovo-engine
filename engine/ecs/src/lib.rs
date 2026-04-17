@@ -35,6 +35,9 @@ pub mod system_params;
 pub mod world;
 pub mod world_builder;
 pub mod world_query;
+pub mod query_cache;
+pub mod sparse_set_v2;
+pub mod system_graph;
 
 // Re-exports for ergonomic use from downstream crates.
 pub use component::{Component, ComponentId, ComponentStorage};
@@ -96,4 +99,21 @@ pub use entity_commands_ext::{
     ChildSpec, CloneFilter, CloneRegistry, CloneResult, DespawnResult,
     EntityCommandsExt, EntityPrefab, HierarchyBuilder, MoveResult,
     PrefabRegistry, TransferRegistry,
+};
+
+// Sparse set v2 re-exports.
+pub use sparse_set_v2::{
+    IntersectionView, SparseSetIter, SparseSetIterMut, SparseSetStats, SparseSetV2,
+};
+
+// System graph re-exports.
+pub use system_graph::{
+    ComponentAccess as GraphComponentAccess, ComponentAccessKind, DependencyEdge,
+    DependencyReason, GraphError, GraphSummary, ParallelBatch,
+    SystemGraph, SystemNode, SystemIndex as GraphSystemIndex,
+};
+
+// Query cache re-exports.
+pub use query_cache::{
+    CacheConfig, CacheEntryInfo, CacheStats, CachedQueryResult, QueryCache, QueryKey,
 };

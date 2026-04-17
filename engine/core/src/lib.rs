@@ -30,6 +30,12 @@ pub mod string_utils;
 pub mod task_scheduler;
 pub mod threading;
 pub mod time;
+pub mod async_runtime;
+pub mod config_system;
+pub mod math_extended;
+pub mod object_model;
+pub mod signal_slot;
+pub mod state_machine_v2;
 
 // Re-export the most commonly used items at the crate root for ergonomic access.
 pub use color::{Color, ColorStop, Gradient};
@@ -78,6 +84,33 @@ pub use task_scheduler::{
     GroupStats, SchedulerConfig, SchedulerStats, TaskDescriptor, TaskError,
     TaskFuture, TaskId, TaskOutcome, TaskPriority, TaskProfileEntry,
     TaskProfiler, TaskResult, TaskScheduler, TaskState, WaitGroup, WorkerStats,
+};
+pub use async_runtime::{
+    BoxFuture, ChannelClosedError, Executor, ExecutorConfig, ExecutorStats,
+    LocalBoxFuture, MpscReceiver, MpscSender, OneshotReceiver, OneshotSender,
+    RuntimeWaker, TaskHandle, TimerFuture,
+};
+pub use config_system::{
+    CommandLineArgs, ConfigChange, ConfigError, ConfigParser, ConfigResult,
+    ConfigSchema, ConfigSystem, ConfigValue, ConfigWatcher, EnvResolver,
+    ValidationRule,
+};
+pub use math_extended::{
+    Complex, Cylindrical, Dual, Fixed16, Fixed24, Half, Spherical,
+    differentiate, fast_cos, fast_inv_sqrt, fast_sin, fast_sqrt,
+    octahedron_decode, octahedron_encode, octahedron_pack_u32, octahedron_unpack_u32,
+};
+pub use object_model::{
+    EngineObject, ObjectData, ObjectFactory, ObjectId as EngineObjectId, ObjectRef,
+    ObjectStore, PropertyChangeEvent, PropertyDescriptor, PropertyValue,
+    TypeInfo, TypeRegistry, WeakObjectRef,
+};
+pub use signal_slot::{
+    ConnectionGuard, ConnectionId, ConnectionType, SharedSignal, Signal, SignalMap,
+};
+pub use state_machine_v2::{
+    ClosureState, ContextValue, HistoryEntry, ParallelStateMachine, State,
+    StateContext, StateData, StateId, StateMachine, TimedState, Transition,
 };
 
 /// Unique identifier for engine objects.
