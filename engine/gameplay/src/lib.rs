@@ -25,20 +25,34 @@
 //! | [`weapon_system`]        | Weapons, fire modes, projectiles, hitscan, melee  |
 //! | [`vehicle_controller`]   | Vehicle gameplay: nitro, drifting, camera, audio  |
 //! | [`weather_system`]       | Dynamic weather with transitions and time-of-day |
+//! | [`economy`]              | Currencies, shops, auctions, supply/demand pricing |
+//! | [`faction_system`]       | Factions, reputation, territory, inter-faction relations |
+//! | [`building_system`]      | Placeable structures, grid snapping, structural integrity |
+//! | [`crafting_v2`]           | Advanced crafting: recipes, quality tiers, enchanting |
+//! | [`minimap`]              | Minimap with fog of war, markers, and zoom controls |
+//! | [`stealth_system`]       | Visibility, noise, disguises, AI search patterns |
+//! | [`scoring`]              | Points, combos, streaks, leaderboards, MVP calculation |
 
 pub mod ability_system;
 pub mod ai_director;
+pub mod building_system;
 pub mod camera_controller;
 pub mod character_controller;
+pub mod crafting_v2;
 pub mod damage_system;
 pub mod dialogue;
+pub mod economy;
+pub mod faction_system;
 pub mod interaction;
 pub mod inventory;
+pub mod minimap;
 pub mod movement;
 pub mod progression;
 pub mod quest_system;
+pub mod scoring;
 pub mod spawner;
 pub mod state_machine;
+pub mod stealth_system;
 pub mod vehicle_controller;
 pub mod weapon_system;
 pub mod weather_system;
@@ -196,4 +210,71 @@ pub use vehicle_controller::{
 pub use weather_system::{
     TimeOfDay, WeatherEffects, WeatherManager, WeatherParameters, WeatherSchedulerConfig,
     WeatherSnapshot, WeatherState, WeatherTransition,
+};
+
+// ---------------------------------------------------------------------------
+// Re-exports: economy
+// ---------------------------------------------------------------------------
+
+pub use economy::{
+    AuctionError, AuctionHouse, AuctionListing, CraftingCost, CraftingCostCalculator,
+    CurrencyType, EconomyTracker, FlowEntry, FlowTotals, PriceModifier, PriceModifierSource,
+    Shop, ShopError, ShopItem, TransactionRecord, TransactionType, Wallet,
+};
+
+// ---------------------------------------------------------------------------
+// Re-exports: faction system
+// ---------------------------------------------------------------------------
+
+pub use faction_system::{
+    Faction, FactionPolicy, FactionRelationship, FactionRelationshipType, FactionSystem,
+    FactionTerritory, ReputationEvent, ReputationReason, ReputationStanding,
+};
+
+// ---------------------------------------------------------------------------
+// Re-exports: building system
+// ---------------------------------------------------------------------------
+
+pub use building_system::{
+    Blueprint, BlueprintPiece, BuildPiece, BuildingEvent, BuildingManager, MaterialType,
+    PieceType, PlacementResult, ResourceCost, SnapPoint, Structure,
+};
+
+// ---------------------------------------------------------------------------
+// Re-exports: crafting v2
+// ---------------------------------------------------------------------------
+
+pub use crafting_v2::{
+    AppliedEnchantment, CraftedItem, CraftingOutput as CraftingV2Output, CraftingResult,
+    CraftingStation, CraftingSystem, EnchantResult, Enchantment, Ingredient, MaterialBonus,
+    QualityTier, Recipe, RecipeBook, RecipeCategory, StatRoller,
+};
+
+// ---------------------------------------------------------------------------
+// Re-exports: minimap
+// ---------------------------------------------------------------------------
+
+pub use minimap::{
+    CustomIcon, FogOfWar, FogState, MarkerRenderData, MarkerType, MinimapConfig, MinimapMarker,
+    MinimapRenderData, MinimapShape, MinimapSystem, RotationMode,
+};
+
+// ---------------------------------------------------------------------------
+// Re-exports: stealth system
+// ---------------------------------------------------------------------------
+
+pub use stealth_system::{
+    AlertState, Disguise, DisguiseBreakAction, LastKnownPositionEntry, NoiseEvent, NoiseType,
+    Posture, SearchPattern, SearchPatternType, StealthComponent, StealthEvent, StealthSystem,
+    SurfaceType,
+};
+
+// ---------------------------------------------------------------------------
+// Re-exports: scoring
+// ---------------------------------------------------------------------------
+
+pub use scoring::{
+    ComboTracker, HighlightType, KillStreak, Leaderboard, LeaderboardEntry, LeaderboardSort,
+    MatchHighlight, MatchStats, PlayerMatchSummary, ScoreEvent, ScoreEventType, ScoreTracker,
+    ScoringSystem, StatTracker,
 };

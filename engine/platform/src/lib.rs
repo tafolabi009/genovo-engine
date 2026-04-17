@@ -17,6 +17,8 @@
 
 // -- Public modules -----------------------------------------------------------
 
+pub mod clipboard;
+pub mod file_dialog;
 pub mod input_action;
 pub mod interface;
 pub mod intrinsics;
@@ -71,6 +73,15 @@ pub use intrinsics::{
     detect_memory_info, memory_fence, pause, rdtsc, rdtscp,
 };
 pub use platform_factory::create_platform;
+pub use clipboard::{
+    Clipboard, ClipboardChangeEvent, ClipboardContent, ClipboardError, ClipboardFormat,
+    ClipboardHistory, ClipboardImage, ClipboardResult, MacOsClipboard, Win32Clipboard,
+    X11Clipboard, create_clipboard,
+};
+pub use file_dialog::{
+    DialogType, DirectoryMemory, FileDialogBuilder, FileDialogError, FileDialogResponse,
+    FileFilter, RecentFileEntry, RecentFiles, SoftwareFileDialog,
+};
 
 // -----------------------------------------------------------------------------
 // Platform Type enum

@@ -4,16 +4,21 @@
 //! behavior tree execution, navigation mesh generation and queries,
 //! crowd simulation with obstacle avoidance, utility AI, goal-oriented
 //! action planning (GOAP), influence maps, steering behaviors,
-//! perception/sensing systems, and group formation management.
+//! perception/sensing systems, group formation management, knowledge
+//! representation with inference, tactical combat AI, and NPC dialogue
+//! decision-making.
 
 pub mod behavior_trees;
+pub mod dialogue_ai;
 pub mod formation;
 pub mod goap;
 pub mod influence_maps;
+pub mod knowledge;
 pub mod navmesh;
 pub mod pathfinding;
 pub mod perception;
 pub mod steering;
+pub mod tactical;
 pub mod utility_ai;
 
 pub use behavior_trees::{
@@ -50,4 +55,20 @@ pub use steering::{
 };
 pub use utility_ai::{
     Action, Consideration, ResponseCurve, UtilityAI, UtilityAIBuilder, UtilityContext,
+};
+pub use knowledge::{
+    ConclusionTemplate, ConclusionValue, ComputeOp, Fact, FactId, FactOrigin, FactPattern,
+    FactValue, InferenceRule, KnowledgeBase, KnowledgeBaseStats, KnowledgeEvent, KnowledgeQuery,
+    KnowledgeSystem, PoolId, QueryResult, RuleId, SharedKnowledge, SharedKnowledgeManager,
+    SharedKnowledgeNotification, ValueConstraint, ValueType,
+};
+pub use tactical::{
+    AmbushPosition, AmbushRole, AmbushSetup, AmbushTrigger, CoverPoint, CoverType,
+    FiringPosition, PatrolMode, PatrolRoute, PatrolWaypoint, RetreatPath, TacticalCell,
+    TacticalMap, ThreatInfo,
+};
+pub use dialogue_ai::{
+    ConversationContext, ConversationEntry, ConversationTone, ConversationTopic,
+    DialogueDecisionMaker, DialogueStyle, DispositionLevel, MoodModel, MoodType, Personality,
+    Relationship, RelationshipGraph, TopicCategory,
 };

@@ -21,6 +21,7 @@ pub mod audio_bridge;
 pub mod bindings_gen;
 pub mod cpp_bridge;
 pub mod engine_ffi;
+pub mod lua_bridge;
 pub mod physx_bridge;
 
 use std::cell::RefCell;

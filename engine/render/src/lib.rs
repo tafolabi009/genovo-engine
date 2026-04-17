@@ -92,6 +92,40 @@ pub mod culling;
 pub mod debug_visualization;
 
 // ---------------------------------------------------------------------------
+// Extended rendering subsystems
+// ---------------------------------------------------------------------------
+
+// Volumetric cloud rendering with ray-marching, scattering, and temporal reprojection.
+pub mod volumetric_clouds;
+
+// GPU terrain rendering with clipmap LOD, tessellation, and material blending.
+pub mod terrain_renderer;
+
+// Screen-space global illumination with temporal accumulation and spatial denoising.
+pub mod screen_space_gi;
+
+// Per-pixel motion vector computation for TAA, motion blur, and temporal effects.
+pub mod motion_vectors;
+
+// Lightmap baking system with path tracing, denoising, and HDR encoding.
+pub mod light_baker;
+
+// Impostor/billboard baking with octahedral mapping and atlas generation.
+pub mod impostor_baker;
+
+// Selection/hover outline rendering using the Jump Flood Algorithm.
+pub mod outline_renderer;
+
+// Order-independent transparency: stochastic, WBOIT, depth peeling, linked lists.
+pub mod stochastic_transparency;
+
+// Camera lens simulation: flares, streaks, dirt, star-burst, and distortion.
+pub mod lens_effects;
+
+// GPU skeletal animation: bone palettes, LBS, DQS, compute hierarchy, morph targets.
+pub mod gpu_skinning;
+
+// ---------------------------------------------------------------------------
 // Re-exports
 // ---------------------------------------------------------------------------
 
