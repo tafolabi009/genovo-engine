@@ -129,3 +129,13 @@ pub use system_graph::{
 pub use query_cache::{
     CacheConfig, CacheEntryInfo, CacheStats, CachedQueryResult, QueryCache, QueryKey,
 };
+
+// Archetype chunk storage: fixed-size chunks (16KB), cache-friendly iteration,
+// chunk allocation pool, component data alignment, chunk iteration with change
+// detection, chunk sorting by archetype.
+pub mod archetype_storage;
+
+// System execution pipeline: prepare/execute/cleanup phases, system parameter
+// extraction, exclusive system support, startup/shutdown systems, system
+// profiling hooks, pipeline visualization.
+pub mod system_pipeline;

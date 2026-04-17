@@ -146,5 +146,26 @@ pub use state_machine_v2::{
     StateContext, StateData, StateId, StateMachine, TimedState, Transition,
 };
 
+// Structured logging: log levels (Trace/Debug/Info/Warn/Error), log targets
+// (console/file/callback), log formatting with timestamp/module/level, log
+// filtering per module, ring buffer for recent logs, log file rotation,
+// colored console output.
+pub mod logging;
+
+// Resource lifecycle management: reference-counted resources, dependency
+// tracking, unload when refcount=0, resource reload, resource events
+// (loaded/unloaded/error), resource statistics.
+pub mod resource_manager;
+
+// Platform detection: OS name/version, CPU model/cores/features, GPU info
+// (from adapter), RAM total/available, display info (resolution/DPI/refresh
+// rate), storage info, build configuration (debug/release).
+pub mod platform_info;
+
+// Engine console commands: cvar system (typed console variables), command
+// registration with help text, argument parsing, autocomplete, cvar
+// persistence to config file, cvar change callbacks, built-in engine cvars.
+pub mod console_commands;
+
 /// Unique identifier for engine objects.
 pub type ObjectId = uuid::Uuid;

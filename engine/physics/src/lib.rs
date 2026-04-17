@@ -156,6 +156,22 @@ pub mod collision_filters_v2;
 // positions/velocities, joint states, constraint states, deterministic replay.
 pub mod physics_serialization;
 
+// Physics scene management: add/remove bodies efficiently, broad-phase update,
+// contact pair cache, island partitioning, step pipeline orchestration,
+// sub-stepping, interpolation state management.
+pub mod physics_scene;
+
+// Contact constraint solver: velocity-level constraint, position correction
+// (split impulse or Baumgarte), friction model (box/cone/ellipse), restitution
+// with velocity threshold, warm starting from previous frame, configurable
+// iterations, convergence tracking.
+pub mod contact_solver;
+
+// Extended collision geometry: convex hull support function, EPA (Expanding
+// Polytope Algorithm) for penetration depth, GJK distance query, Minkowski
+// portal refinement, margin-based collision (GJK+EPA with margins).
+pub mod collision_geometry;
+
 // Re-exports for ergonomic top-level access.
 pub use collision::{
     ColliderDesc, CollisionEvent, CollisionLayer, CollisionMask, CollisionShape, ContactManifold,
