@@ -10,7 +10,9 @@
 //! with difficulty scaling, and extended sensory memory with attention.
 
 pub mod behavior_trees;
+pub mod decision_tree;
 pub mod dialogue_ai;
+pub mod enemy_spawning;
 pub mod formation;
 pub mod goap;
 pub mod influence_maps;
@@ -18,6 +20,8 @@ pub mod knowledge;
 pub mod navmesh;
 pub mod pathfinding;
 pub mod perception;
+pub mod sensory_memory;
+pub mod squad_ai;
 pub mod steering;
 pub mod tactical;
 pub mod utility_ai;
@@ -72,4 +76,25 @@ pub use dialogue_ai::{
     ConversationContext, ConversationEntry, ConversationTone, ConversationTopic,
     DialogueDecisionMaker, DialogueStyle, DispositionLevel, MoodModel, MoodType, Personality,
     Relationship, RelationshipGraph, TopicCategory,
+};
+pub use decision_tree::{
+    Action as DecisionAction, Condition, ConditionValue, DecisionContext,
+    DecisionNode, DecisionTree, DecisionTreeBuilder, DecisionTreeComponent,
+    DecisionTreeEvaluator, NodeId as DecisionNodeId, NodeStats, SimpleRng,
+    TreeId, VisualizationNode, generate_visualization,
+};
+pub use squad_ai::{
+    FireAndMoveState, MemberOrder, MemberState, RallyPoint, Squad, SquadAISystem,
+    SquadComponent, SquadEvent, SquadFormation, SquadFormationShape,
+    SquadHealthStatus, SquadId, SquadOrder, SquadRole, MemberId,
+};
+pub use enemy_spawning::{
+    DifficultyScaler, DifficultyWaveScaling, EnemySpawnManager, EnemySpawnRequest,
+    EnemyTier, EnemyTypeDefinition, EnemyTypeId, EncounterState, SpawnZone,
+    SpawnWaveDefinition, SpawnerEvent, SpawnerStats, WaveComposer,
+};
+pub use sensory_memory::{
+    AttentionFocus, DecayCurve, SensoryEvent, SensoryMemory, SensoryMemoryComponent,
+    SensoryMemoryStats, StimulusCategory, StimulusId, StimulusMemory,
+    SenseType as SensoryMemorySenseType,
 };
