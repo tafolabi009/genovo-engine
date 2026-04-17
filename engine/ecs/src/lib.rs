@@ -39,6 +39,14 @@ pub mod query_cache;
 pub mod sparse_set_v2;
 pub mod system_graph;
 
+// Component lifecycle hooks: on_insert, on_remove, on_modify callbacks per component
+// type, hook registration, batch hook processing, hook priority ordering.
+pub mod component_hooks;
+
+// ECS world snapshot: serialize entire world state, diff two snapshots, restore
+// from snapshot, used for undo/redo and networking.
+pub mod world_snapshot;
+
 // Re-exports for ergonomic use from downstream crates.
 pub use component::{Component, ComponentId, ComponentStorage};
 pub use entity::{Entity, EntityBuilder, EntityStorage};

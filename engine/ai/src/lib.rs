@@ -26,6 +26,18 @@ pub mod steering;
 pub mod tactical;
 pub mod utility_ai;
 
+// HTN (Hierarchical Task Network) planner: compound tasks decompose into primitives,
+// methods with preconditions, plan search with backtracking, partial plan execution.
+pub mod planner_v2;
+
+// AI emotions: PAD model (Pleasure/Arousal/Dominance), emotion decay, triggers,
+// emotion-to-behavior mapping, facial expression output, mood persistence.
+pub mod emotion_model;
+
+// AI spatial awareness: visibility map, danger map, path safety evaluation,
+// predictive position estimation, exposure analysis, defensive position scoring.
+pub mod spatial_awareness;
+
 pub use behavior_trees::{
     ActionNode, BehaviorContext, BehaviorNode, BehaviorTree, BehaviorTreeAsset,
     BehaviorTreeBuilder, Blackboard, ConditionDecorator, ConditionNode, Cooldown, Inverter,

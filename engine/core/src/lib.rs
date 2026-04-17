@@ -37,6 +37,14 @@ pub mod object_model;
 pub mod signal_slot;
 pub mod state_machine_v2;
 
+// Thread pool: configurable worker count, task queue with priority, work stealing,
+// thread affinity, thread naming, idle callbacks, graceful shutdown, pool statistics.
+pub mod thread_pool;
+
+// Arena allocator: bump allocation, frame arena (reset each frame), typed arena,
+// arena scope with RAII, alignment handling, memory tracking.
+pub mod memory_arena;
+
 // Re-export the most commonly used items at the crate root for ergonomic access.
 pub use color::{Color, ColorStop, Gradient};
 pub use curve::{AnimationCurve, BezierCurve, BSpline, CatmullRomSpline, CurveKeyframe, CurveMode};

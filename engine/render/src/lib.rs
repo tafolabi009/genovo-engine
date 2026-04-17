@@ -175,6 +175,30 @@ pub mod tone_map_v2;
 pub mod vertex_compression;
 
 // ---------------------------------------------------------------------------
+// Additional rendering subsystems (batch 3)
+// ---------------------------------------------------------------------------
+
+// Generic temporal filtering: accumulation buffer, motion-vector reprojection,
+// neighborhood clamping (AABB/variance), velocity rejection, sub-pixel jitter patterns.
+pub mod temporal_filter;
+
+// Indirect lighting collection: light probes, reflection probes, lightmaps, SSGI,
+// volumetric probes; blend/weight all sources; fallback chain.
+pub mod indirect_lighting;
+
+// Mesh processing utilities: decimation (progressive), subdivision (Loop/Catmull-Clark),
+// smoothing (Laplacian/Taubin), mesh boolean (CSG), welding, splitting by material.
+pub mod geometry_processing;
+
+// Batched wireframe boxes/spheres/lines/arrows for debug, instanced rendering,
+// configurable line width, depth test toggle, color per primitive.
+pub mod primitive_batch;
+
+// Ambient lighting: flat, gradient (sky+ground), hemisphere (tri-directional),
+// SH ambient, ambient from cubemap, ambient probe grid, AO integration.
+pub mod ambient_system;
+
+// ---------------------------------------------------------------------------
 // Re-exports
 // ---------------------------------------------------------------------------
 

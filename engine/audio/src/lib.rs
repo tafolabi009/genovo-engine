@@ -85,6 +85,10 @@ pub use voice_synthesis::{
     FormantParams, Phoneme, PhonemeLibrary, TextToPhoneme, VoiceEffect,
     VoiceSynthesizer,
 };
+// Audio playback manager: sound pool with priority, voice stealing (quietest/oldest/
+// farthest), sound categories, fade manager, crossfade, ducking, audio focus.
+pub mod audio_playback;
+
 pub use audio_bus_mixer::{
     AudioBusState, BusCompressor, BusId, BusKind, BusMixer, BusSnapshot,
     SendConfig, SnapshotCrossfade, VuMeter,

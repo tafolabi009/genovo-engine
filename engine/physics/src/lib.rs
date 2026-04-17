@@ -109,6 +109,18 @@ pub mod trigger_volumes;
 pub mod vehicle;
 pub mod wind_system;
 
+// Collision event system: begin/stay/end events, trigger enter/exit, event filtering,
+// callbacks, contact info (points, normals, impulses), event history buffer.
+pub mod collision_events;
+
+// Enhanced physics world: sub-worlds, physics islands, sleeping island optimization,
+// broad-phase switching (SAP/grid/BVH), narrow-phase cache, constraint groups.
+pub mod physics_world_v2;
+
+// Shape cast queries: convex shape sweep, box sweep, capsule sweep, sphere sweep,
+// layer filter, contact point generation, time of impact.
+pub mod shape_casting;
+
 // Re-exports for ergonomic top-level access.
 pub use collision::{
     ColliderDesc, CollisionEvent, CollisionLayer, CollisionMask, CollisionShape, ContactManifold,

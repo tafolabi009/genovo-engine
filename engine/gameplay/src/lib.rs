@@ -71,6 +71,22 @@ pub mod vehicle_controller;
 pub mod weapon_system;
 pub mod weather_system;
 
+// Tutorial/onboarding: tutorial steps with conditions/triggers, tooltip positioning,
+// highlight UI elements, force player actions, tutorial progress tracking, skip option.
+pub mod tutorial_system;
+
+// Extended achievements: compound conditions (AND/OR/NOT), progress tracking, secret
+// achievements, categories, rewards (items/titles/cosmetics), notification queue.
+pub mod achievement_v2;
+
+// Advanced save: screenshot thumbnail, playtime tracking, difficulty level, save
+// versioning, cloud save metadata, save slot management, save/load events.
+pub mod save_game_v2;
+
+// Fighting game combos: input sequence detection, direction notation (236P = QCF+P),
+// cancel windows, combo tree, frame-perfect inputs, input buffer, combo counter.
+pub mod input_combo;
+
 // ---------------------------------------------------------------------------
 // Re-exports: character controller
 // ---------------------------------------------------------------------------
