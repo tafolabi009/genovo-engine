@@ -22,8 +22,10 @@ pub mod change_detection;
 pub mod commands;
 pub mod component;
 pub mod entity;
+pub mod entity_commands_ext;
 pub mod event;
 pub mod observer;
+pub mod parallel_executor;
 pub mod query;
 pub mod relations;
 pub mod resource;
@@ -31,6 +33,7 @@ pub mod schedule;
 pub mod system;
 pub mod system_params;
 pub mod world;
+pub mod world_builder;
 pub mod world_query;
 
 // Re-exports for ergonomic use from downstream crates.
@@ -74,4 +77,23 @@ pub use system_params::{
     Commands, EventReader, EventWriter, ExclusiveSystem, IntoSystem, Local, ParamSystemAdapter,
     QueryParamIter, ResParam, ResMutParam, RunCondition, RunConditionId, RunConditionRegistry,
     SystemMeta, SystemParam, SystemParamAccess, SystemParamState,
+};
+
+// World builder re-exports.
+pub use world_builder::{
+    EcsPlugin, SystemRegistration, SystemSetConfig, WorldBuilder, WorldMetadata,
+};
+
+// Parallel executor re-exports.
+pub use parallel_executor::{
+    AccessKind, BatchSchedule, ConflictGraph, ExecutionContext, ExecutionProfile,
+    ExecutorConfig, ParallelBatch, ParallelExecutor, ParallelSystemDescriptor,
+    SystemComponentAccess, SystemIndex,
+};
+
+// Entity commands extension re-exports.
+pub use entity_commands_ext::{
+    ChildSpec, CloneFilter, CloneRegistry, CloneResult, DespawnResult,
+    EntityCommandsExt, EntityPrefab, HierarchyBuilder, MoveResult,
+    PrefabRegistry, TransferRegistry,
 };

@@ -12,7 +12,9 @@
 //!   curve editing, and cutscene asset serialization.
 
 pub mod camera;
+pub mod cutscene_player;
 pub mod sequencer;
+pub mod subtitle_system;
 pub mod timeline;
 
 // Re-exports for ergonomic access.
@@ -28,4 +30,14 @@ pub use sequencer::{
 pub use timeline::{
     CurveEditor, CutsceneAsset, Marker, TangentMode, Timeline, TimelineGroup, TimelineSelection,
     TimelineTrackMeta,
+};
+pub use cutscene_player::{
+    CutsceneDescriptor, CutsceneEvent, CutsceneId, CutsceneKeyframe, CutscenePlayer,
+    CutsceneStateEvent, CutsceneTrack, EasingType, KeyframeData, LetterboxState, PlaybackState,
+    TrackType, TransitionState, TransitionType,
+};
+pub use subtitle_system::{
+    ActiveSubtitleSlot, PortraitAlignment, SpeakerPortrait, SubtitleEntry, SubtitleId,
+    SubtitleManager, SubtitlePosition, SubtitlePreset, SubtitleStyle, SubtitleTextAlignment,
+    WordRevealState,
 };

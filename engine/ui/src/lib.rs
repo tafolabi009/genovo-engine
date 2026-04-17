@@ -19,8 +19,11 @@
 
 pub mod animation;
 pub mod core;
+pub mod data_binding;
+pub mod drag_drop;
 pub mod layout;
 pub mod render_commands;
+pub mod rich_text;
 pub mod style;
 pub mod text;
 pub mod widgets;
@@ -43,6 +46,23 @@ pub use render_commands::{DrawCommand, DrawList, UIRenderer};
 pub use style::{PseudoState, Style, StyleSheet, Theme, ThemeManager, Transition};
 pub use text::{Font, FontAtlas, FontLibrary, GlyphRun, ShapedText, TextLayout, TextMeasurement};
 pub use widgets::*;
+pub use data_binding::{
+    BindingContext, BindingConverter, BindingDirection, BindingError, BindingExpression,
+    BindingId, BindingMode, BindingPath, BindingScope, BindingValidator, ChangeNotification,
+    CollectionBinding, CollectionChange, CollectionUpdateCommand, ObservableCollection,
+    PropertyAccessor, PropertyId, ValidationResult,
+};
+pub use drag_drop::{
+    DragDropEvent, DragDropManager, DragPayload, DragPayloadType, DragPhase, DragRect,
+    DragSession, DragSessionId, DragSource, DragSourceId, DragVisual, DropFeedback,
+    DropTarget, DropTargetId, DropValidation, DropValidator, SnapSlot,
+};
+pub use rich_text::{
+    FadeEffect, GradientDirection, GradientParams, ImageAlignment, InlineImage, OutlineParams,
+    PulseEffect, RainbowEffect, RichTextColor, RichTextDocument, RichTextElement,
+    RichTextParser, RichTextSpan, ShakeEffect, ShadowParams, TextAlignment, TextEffect,
+    TextStyle, TypewriterAnimator, TypewriterEffect, WaveEffect,
+};
 
 // ---------------------------------------------------------------------------
 // Error type

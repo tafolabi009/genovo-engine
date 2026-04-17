@@ -21,9 +21,21 @@ pub mod assets;
 pub mod formatting;
 pub mod locale;
 pub mod strings;
+pub mod text_analyzer;
+pub mod voice_localization;
 
 // Re-exports for ergonomic access.
 pub use assets::{FontSelector, LocalizedAsset, LocalizedAssetPath};
 pub use formatting::{DateFormat, DatePattern, NumberFormat, PluralCategory, PluralRules};
 pub use locale::{Locale, LocaleId, LocaleManager, TextDirection};
 pub use strings::{StringTable, StringTableLoader, StringValidation};
+pub use text_analyzer::{
+    CoverageReport, LocaleCoverage, QualityIssue, QualityIssueType, ScreenshotReference,
+    TextAnalyzer, TranslationDatabase, TranslationEntry, TranslationKey, TranslationMemory,
+    TranslationPriority, TranslationSuggestion, UntranslatedEntry,
+};
+pub use voice_localization::{
+    AudioFormat, CastingNote, FallbackChain, LipSyncData, PhonemeEvent, ResolvedVoiceAsset,
+    VisemeEvent, VisemeType, VoiceAssetInfo, VoiceCoverageReport, VoiceLineId, VoiceLineMeta,
+    VoiceLocalizationManager, VolumeNormalization,
+};

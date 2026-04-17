@@ -25,7 +25,10 @@
 //!   topological sort evaluation, built-in gain/pan/filter/delay/mixer nodes.
 
 pub mod ambience;
+pub mod audio_bus_mixer;
 pub mod audio_graph;
+pub mod audio_occlusion;
+pub mod audio_zones;
 pub mod backends;
 pub mod components;
 pub mod dsp;
@@ -34,6 +37,7 @@ pub mod midi;
 pub mod mixer;
 pub mod music;
 pub mod spatial;
+pub mod voice_synthesis;
 
 // Re-exports for ergonomic top-level access.
 pub use backends::{AudioBackend, NullBackend};
@@ -67,4 +71,21 @@ pub use midi::{
 pub use effects_advanced::{
     Complex, ConvolutionReverb, Limiter, PitchShifter, SpatialListener,
     Spatializer3D, StereoWidener, fft, fft_convolve, fft_real, ifft_real,
+};
+pub use audio_occlusion::{
+    AcousticMaterial, AcousticPortal, AcousticRoom, DiffractionEdge,
+    OcclusionConfig, OcclusionLowPassFilter, OcclusionResult, OcclusionSystem,
+    OcclusionWall, TransmissionLoss,
+};
+pub use audio_zones::{
+    AudioSnapshot, AudioZone, AudioZoneSystem, BlendState, EqParams,
+    ReverbParams, SnapshotTransition, ZoneId, ZoneShape,
+};
+pub use voice_synthesis::{
+    FormantParams, Phoneme, PhonemeLibrary, TextToPhoneme, VoiceEffect,
+    VoiceSynthesizer,
+};
+pub use audio_bus_mixer::{
+    AudioBusState, BusCompressor, BusId, BusKind, BusMixer, BusSnapshot,
+    SendConfig, SnapshotCrossfade, VuMeter,
 };

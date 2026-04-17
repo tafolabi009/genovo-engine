@@ -12,11 +12,13 @@
 //! - **Analytics** — event/metric tracking, sessions, heatmaps, and data export
 
 pub mod analytics;
+pub mod command_system;
 pub mod console;
 pub mod debug_render;
 pub mod gizmos;
 pub mod memory_profiler;
 pub mod profiler;
+pub mod screen_logger;
 
 // Re-exports for ergonomic access.
 pub use analytics::{
@@ -34,3 +36,12 @@ pub use profiler::{
     ProfileFrame, ProfileNode, ProfileReport, ProfileScope, Profiler, ScopeGuard,
 };
 pub use profiler::gpu_profiler::{GpuProfiler, GpuProfileReport};
+pub use command_system::{
+    CheatFlags, CommandArg, CommandArgDef, CommandCategory, CommandDef, CommandId, CommandMacro,
+    CommandResult, CommandSystem, KeyBinding, KeyModifiers,
+};
+pub use screen_logger::{
+    CategoryFilter, LogCategory, LogOverlayConfig, LogSeverity, OverlayPosition,
+    ScreenLogMessage, ScreenLogger, ScreenLoggerStats, ScreenshotCapture, ScreenshotFormat,
+    VideoCaptureState,
+};

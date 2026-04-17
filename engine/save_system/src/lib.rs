@@ -11,8 +11,14 @@
 //! - **Cloud compatibility** — platform-agnostic metadata for cloud save sync
 
 pub mod save_game;
+pub mod save_migration;
 
 pub use save_game::{
     CloudSyncMetadata, ComponentData, EntityData, SaveError, SaveGame, SaveManager,
     SaveMetadata, SaveResult, SaveSlot, WorldState,
+};
+pub use save_migration::{
+    DiffSummary, DiffType, MigrationError, MigrationReport, MigrationStep, RecoveryResult,
+    RecoveryStrategy, SaveDiffEntry, SaveDiffer, SaveHeader, SaveMigrationManager, SaveValidator,
+    SaveValue, SaveVersion, ValidationIssue, ValidationRule, ValidationSeverity,
 };

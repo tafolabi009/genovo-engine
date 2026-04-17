@@ -13,6 +13,8 @@
 //! - [`material`] — PBR material asset definitions
 //! - [`scene_format`] — Scene file format with entity hierarchies
 
+pub mod asset_bundle;
+pub mod asset_processor;
 pub mod database;
 pub mod font;
 pub mod formats;
@@ -23,6 +25,7 @@ pub mod loader;
 pub mod material;
 pub mod pipeline;
 pub mod scene_format;
+pub mod shader_compiler_v2;
 
 pub use database::{AssetDatabase, AssetMeta};
 pub use loader::{AssetError, AssetHandle, AssetId, AssetLoader, AssetPath, AssetServer, LoadState};
@@ -48,4 +51,18 @@ pub use scene_format::{
 pub use hot_reload::{
     AssetReloadEvent, AssetType, FileChangeInfo, FileWatcher, HotReloadManager, HotReloadStats,
     WatchedFile,
+};
+pub use asset_bundle::{
+    BundleAssetEntry, BundleBuilder, BundleDependencyGraph, BundleError, BundleManifest,
+    BundleReader, BundleSizeAnalysis, BundleStreamLoader, CompressionCodec, DlcBundle,
+    DlcManager, LoadPriority, PatchAction, PatchApplicator, PatchEntry, StreamResult, StreamState,
+};
+pub use asset_processor::{
+    AudioImportSettings, BatchProcessor, CompressedTexture, GpuTextureFormat,
+    MeshImportSettings, OptimisedMesh, ProcessableMesh, ProcessorError, RawAudio, RawPixels,
+    TextureImportSettings, Thumbnail,
+};
+pub use shader_compiler_v2::{
+    BindingType, ShaderBinding, ShaderCache, ShaderCompiler, ShaderError, ShaderReflection,
+    ShaderStage, SpirVModule, ValidationResult,
 };

@@ -6,9 +6,11 @@
 //! layers, spring/jiggle bone physics, and ECS-integrated components.
 
 pub mod additive_animations;
+pub mod animation_graph;
 pub mod blend_spaces;
 pub mod blend_tree;
 pub mod components;
+pub mod foot_ik;
 pub mod ik;
 pub mod morph_targets;
 pub mod retargeting;

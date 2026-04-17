@@ -25,6 +25,9 @@ pub mod serialization;
 pub mod type_registry;
 pub mod simd;
 pub mod spatial;
+pub mod pool_allocator_v2;
+pub mod string_utils;
+pub mod task_scheduler;
 pub mod threading;
 pub mod time;
 
@@ -58,6 +61,23 @@ pub use event_bus::{
     AppLifecycleEvent, CollisionEvent, EntityDespawned, EntitySpawned, Event, EventBus,
     EventBusStats, EventId, KeyModifiers, KeyPressed, KeyReleased, PhysicsStep, SceneLoaded,
     SceneUnloading, SubscriberId, WindowResized,
+};
+pub use pool_allocator_v2::{
+    AllocError, AllocHandle, AllocResult, AllocationCategory, AllocationRecord,
+    AllocatorStats, CategoryBudget, DefragMove, DefragPlan, LeakDetector,
+    PoolAllocatorV2, ScopedAllocator, SourceLocation,
+};
+pub use string_utils::{
+    StringBuilder, StringPool, StringId, NamedArgs,
+    city_hash_64, city_hash_str, fnv1a_32, fnv1a_64, fnv1a_str, fnv1a_str_64,
+    format_named, fuzzy_find, levenshtein_distance, levenshtein_similarity,
+    murmur3_32, murmur3_str, path_extension, path_filename, path_join,
+    path_normalize, path_parent, path_stem, wildcard_match,
+};
+pub use task_scheduler::{
+    GroupStats, SchedulerConfig, SchedulerStats, TaskDescriptor, TaskError,
+    TaskFuture, TaskId, TaskOutcome, TaskPriority, TaskProfileEntry,
+    TaskProfiler, TaskResult, TaskScheduler, TaskState, WaitGroup, WorkerStats,
 };
 
 /// Unique identifier for engine objects.
