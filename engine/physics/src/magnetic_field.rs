@@ -596,14 +596,27 @@ impl MagneticFieldSystem {
             return;
         }
 
+        // Pre-compute field values for each particle to avoid borrow conflict.
+        let fields: Vec<(Vec3, Vec3)> = self
+            .charged_particles
+            .iter()
+            .map(|p| {
+                if p.active {
+                    (
+                        self.sample_magnetic_field_internal(p.position),
+                        self.sample_electric_field_internal(p.position),
+                    )
+                } else {
+                    (Vec3::ZERO, Vec3::ZERO)
+                }
+            })
+            .collect();
+
         // Apply Lorentz force to each charged particle
-        for particle in &mut self.charged_particles {
+        for (particle, (b, e)) in self.charged_particles.iter_mut().zip(fields.into_iter()) {
             if !particle.active {
                 continue;
             }
-
-            let b = self.sample_magnetic_field_internal(particle.position);
-            let e = self.sample_electric_field_internal(particle.position);
 
             particle.apply_lorentz(e, b);
             particle.integrate(dt);

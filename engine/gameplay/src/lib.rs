@@ -28,11 +28,11 @@
 //! | [`economy`]              | Currencies, shops, auctions, supply/demand pricing |
 //! | [`faction_system`]       | Factions, reputation, territory, inter-faction relations |
 //! | [`building_system`]      | Placeable structures, grid snapping, structural integrity |
-//! | [`crafting_v2`]           | Advanced crafting: recipes, quality tiers, enchanting |
+//! | [`crafting`]           | Advanced crafting: recipes, quality tiers, enchanting |
 //! | [`minimap`]              | Minimap with fog of war, markers, and zoom controls |
 //! | [`stealth_system`]       | Visibility, noise, disguises, AI search patterns |
 //! | [`scoring`]              | Points, combos, streaks, leaderboards, MVP calculation |
-//! | [`dialogue_v2`]          | Ink-style dialogue engine with variables and barks |
+//! | [`dialogue_ink`]          | Ink-style dialogue engine with variables and barks |
 //! | [`cooking_system`]       | Cooking/alchemy with recipes, buffs, and discovery |
 //! | [`mount_system`]         | Mountable creatures with stamina, taming, combat |
 //! | [`day_night_cycle`]      | Day/night with sun, moon, sky, NPC schedules |
@@ -47,11 +47,10 @@ pub mod camera_controller;
 pub mod character_controller;
 pub mod companion_ai;
 pub mod cooking_system;
-pub mod crafting_v2;
+pub mod crafting;
 pub mod damage_system;
 pub mod day_night_cycle;
 pub mod dialogue;
-pub mod dialogue_v2;
 pub mod economy;
 pub mod faction_system;
 pub mod interaction;
@@ -77,11 +76,11 @@ pub mod tutorial_system;
 
 // Extended achievements: compound conditions (AND/OR/NOT), progress tracking, secret
 // achievements, categories, rewards (items/titles/cosmetics), notification queue.
-pub mod achievement_v2;
+pub mod achievement;
 
 // Advanced save: screenshot thumbnail, playtime tracking, difficulty level, save
 // versioning, cloud save metadata, save slot management, save/load events.
-pub mod save_game_v2;
+pub mod save_game;
 
 // Fighting game combos: input sequence detection, direction notation (236P = QCF+P),
 // cancel windows, combo tree, frame-perfect inputs, input buffer, combo counter.
@@ -90,7 +89,7 @@ pub mod input_combo;
 // Enhanced inventory: grid-based inventory (items occupy WxH cells like Diablo),
 // auto-sort/compact, item categories, item comparison tooltips, equipment set bonuses,
 // item durability repair.
-pub mod inventory_v2;
+// (merged into `inventory` module)
 
 // NPC management: NPC schedules (daily routines), NPC spawning/despawning,
 // NPC merchant with inventory, NPC dialogue triggers, NPC pathfinding integration,
@@ -130,7 +129,7 @@ pub mod collectibles;
 
 // Enhanced camera: multiple camera modes, smooth transitions, camera effects stack,
 // cinematic camera with keyframed paths, split-screen support.
-pub mod camera_system_v2;
+pub mod camera_system;
 
 // Level/map progression: level sequence, level unlocking conditions, par time/score,
 // star ratings, level statistics, level select data, world map nodes.
@@ -183,9 +182,10 @@ pub use camera_controller::{
 // ---------------------------------------------------------------------------
 
 pub use inventory::{
-    CraftingBook, CraftingIngredient, CraftingOutput, CraftingRecipe, Equipment, EquipmentSlot,
-    Inventory, InventoryError, InventoryResult, ItemCategory, ItemDefinition, ItemInstanceData,
-    ItemProperty, ItemRarity, ItemRegistry, ItemStack, LootDrop, LootEntry, LootTable,
+    EquipSlotV2, EquipmentSetId, EquipmentSetV2, GridCell, GridInventory,
+    GridItemPlacement, InventoryErrorV2, ItemCategory, ItemInstanceId, ItemInstanceV2,
+    ItemRarityV2, ItemRegistryV2, ItemStatV2, ItemTypeDefV2, ItemTypeId,
+    RepairCostV2, SetBonusV2, StatDiffV2,
 };
 
 // ---------------------------------------------------------------------------
@@ -211,9 +211,11 @@ pub use quest_system::{
 // ---------------------------------------------------------------------------
 
 pub use dialogue::{
-    ComparisonOp, DialogueChoice, DialogueCondition, DialogueConsequence, DialogueContext,
-    DialogueNode, DialogueRunner, DialogueRunnerState, DialogueTree, SimpleDialogueContext,
-    SkillCheck, SpeakerEmotion, evaluate_condition,
+    BarkManager, BarkTrigger, Choice as DialogueV2Choice, ContentLine,
+    DialogueEvent as DialogueV2Event, DialogueQueue, DialogueV2Component,
+    DialogueV2System, InkAction, InkCondition, Knot, NpcDialogueConfig,
+    Story, StoryRunner, StoryRunnerState, StoryVariableValue, StoryVariables,
+    Stitch,
 };
 
 // ---------------------------------------------------------------------------
@@ -344,7 +346,7 @@ pub use building_system::{
 // Re-exports: crafting v2
 // ---------------------------------------------------------------------------
 
-pub use crafting_v2::{
+pub use crafting::{
     AppliedEnchantment, CraftedItem, CraftingOutput as CraftingV2Output, CraftingResult,
     CraftingStation, CraftingSystem, EnchantResult, Enchantment, Ingredient, MaterialBonus,
     QualityTier, Recipe, RecipeBook, RecipeCategory, StatRoller,
@@ -374,22 +376,12 @@ pub use stealth_system::{
 // ---------------------------------------------------------------------------
 
 pub use scoring::{
-    ComboTracker, HighlightType, KillStreak, Leaderboard, LeaderboardEntry, LeaderboardSort,
+    ComboTracker as ScoringComboTracker, HighlightType, KillStreak, Leaderboard, LeaderboardEntry, LeaderboardSort,
     MatchHighlight, MatchStats, PlayerMatchSummary, ScoreEvent, ScoreEventType, ScoreTracker,
     ScoringSystem, StatTracker,
 };
 
-// ---------------------------------------------------------------------------
-// Re-exports: dialogue v2
-// ---------------------------------------------------------------------------
-
-pub use dialogue_v2::{
-    BarkManager, BarkTrigger, Choice as DialogueV2Choice, ContentLine,
-    DialogueEvent as DialogueV2Event, DialogueQueue, DialogueV2Component,
-    DialogueV2System, InkAction, InkCondition, Knot, NpcDialogueConfig,
-    Story, StoryRunner, StoryRunnerState, StoryVariableValue, StoryVariables,
-    Stitch,
-};
+// (dialogue v2 re-exports merged into dialogue re-exports above)
 
 // ---------------------------------------------------------------------------
 // Re-exports: cooking system

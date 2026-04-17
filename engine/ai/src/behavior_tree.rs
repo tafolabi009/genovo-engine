@@ -8,8 +8,8 @@ use std::collections::HashMap;
 pub const MAX_BT_DEPTH: usize = 32;
 pub const MAX_CHILDREN: usize = 64;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BtStatus { Running, Success, Failure, Invalid }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BtStatus { Running, Success, Failure, #[default] Invalid }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BtNodeId(pub u32);

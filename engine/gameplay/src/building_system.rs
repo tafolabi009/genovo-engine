@@ -1180,6 +1180,14 @@ impl BuildingManager {
         rotation: f32,
         owner: u64,
     ) -> Result<u64, PlacementResult> {
+        let snapped = self.snap_to_grid(position);
+        let grid_size = self.grid_size;
+        let grid_pos = (
+            (snapped.x / grid_size) as i32,
+            (snapped.y / grid_size) as i32,
+            (snapped.z / grid_size) as i32,
+        );
+
         let structure = self
             .structures
             .get_mut(&structure_id)
@@ -1188,13 +1196,6 @@ impl BuildingManager {
         if structure.piece_count() >= MAX_PIECES_PER_STRUCTURE {
             return Err(PlacementResult::StructureFull);
         }
-
-        let snapped = self.snap_to_grid(position);
-        let grid_pos = (
-            (snapped.x / self.grid_size) as i32,
-            (snapped.y / self.grid_size) as i32,
-            (snapped.z / self.grid_size) as i32,
-        );
 
         // Check for overlapping pieces
         let overlapping = structure.pieces().values().any(|p| {
@@ -1228,8 +1229,8 @@ impl BuildingManager {
         let connected: Vec<u64> = structure
             .pieces()
             .iter()
-            .filter(|(&id, p)| {
-                id != piece_id
+            .filter(|(id, p)| {
+                **id != piece_id
                     && (p.grid_pos.0 - grid_pos.0).abs() <= 1
                     && (p.grid_pos.1 - grid_pos.1).abs() <= 1
                     && (p.grid_pos.2 - grid_pos.2).abs() <= 1

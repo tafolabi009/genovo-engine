@@ -1337,8 +1337,8 @@ mod tests {
     #[test]
     fn generate_small_town() {
         let config = CityConfig::small_town();
-        let mut gen = CityGenerator::new(config);
-        let city = gen.generate();
+        let mut city_gen = CityGenerator::new(config);
+        let city = city_gen.generate();
 
         assert!(!city.nodes.is_empty());
         assert!(!city.segments.is_empty());
@@ -1349,8 +1349,8 @@ mod tests {
     #[test]
     fn generate_medium_city() {
         let config = CityConfig::medium_city();
-        let mut gen = CityGenerator::new(config);
-        let city = gen.generate();
+        let mut city_gen = CityGenerator::new(config);
+        let city = city_gen.generate();
 
         assert!(city.nodes.len() > 5);
         assert!(city.segments.len() > 5);
@@ -1359,8 +1359,8 @@ mod tests {
     #[test]
     fn generate_downtown() {
         let config = CityConfig::downtown();
-        let mut gen = CityGenerator::new(config);
-        let city = gen.generate();
+        let mut city_gen = CityGenerator::new(config);
+        let city = city_gen.generate();
 
         assert!(!city.blocks.is_empty());
     }

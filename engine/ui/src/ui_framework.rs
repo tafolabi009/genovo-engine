@@ -433,8 +433,9 @@ impl UI {
     /// Allocate space for a widget of the given size. Returns the rect.
     fn allocate_widget(&mut self, width: f32, height: f32) -> Rect {
         let spacing = self.style.item_spacing;
+        let indent_width = self.style.indent_width;
         let cursor = self.cursor_mut();
-        let indent_offset = cursor.indent as f32 * self.style.indent_width;
+        let indent_offset = cursor.indent as f32 * indent_width;
 
         let rect = if cursor.horizontal {
             let r = Rect::new(
@@ -632,8 +633,9 @@ impl UI {
         f(self);
 
         let finished = self.layout_stack.pop().unwrap();
+        let item_spacing = self.style.item_spacing;
         let parent = self.cursor_mut();
-        parent.pos.y = finished.pos.y + finished.row_height + self.style.item_spacing;
+        parent.pos.y = finished.pos.y + finished.row_height + item_spacing;
     }
 
     /// Begin a vertical layout group.

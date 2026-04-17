@@ -984,18 +984,16 @@ impl PerformanceMonitor {
             );
         }
 
-        // Per-system alerts.
-        for (name, timing) in &self.systems {
-            if timing.is_over_budget() {
+        // Per-system alerts (collect first to avoid borrow conflict).
+        let system_alerts: Vec<(String, String, f64, f64)> = self.systems.iter()
+            .filter(|(_, timing)| timing.is_over_budget())
+            .map(|(name, timing)| {
                 let budget = timing.budget_ms.unwrap_or(0.0);
-                self.emit_alert(
-                    AlertSeverity::Warning,
-                    &format!("system_{name}"),
-                    &format!("{name} system over time budget"),
-                    timing.current_ms,
-                    budget,
-                );
-            }
+                (format!("system_{name}"), format!("{name} system over time budget"), timing.current_ms, budget)
+            })
+            .collect();
+        for (key, message, current, budget) in system_alerts {
+            self.emit_alert(AlertSeverity::Warning, &key, &message, current, budget);
         }
     }
 

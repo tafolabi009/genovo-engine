@@ -484,8 +484,8 @@ impl JointSystem {
         if index >= self.joints.len() {
             return None;
         }
-        let gen = handle.generation();
-        self.joints[index].as_mut().filter(|s| s.handle.generation() == gen)
+        let generation = handle.generation();
+        self.joints[index].as_mut().filter(|s| s.handle.generation() == generation)
     }
 
     /// Find all joints attached to a body.

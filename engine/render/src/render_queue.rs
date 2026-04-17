@@ -543,7 +543,6 @@ impl InstanceBatcher {
                 }
             }
         }
-        let _ = (mesh, material); // Suppress unused warning in doc context.
         result
     }
 }

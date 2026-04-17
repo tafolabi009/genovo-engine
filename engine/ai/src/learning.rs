@@ -1025,12 +1025,15 @@ impl QLearner {
         self.stats.record_episode_reward(self.episode_reward, self.episode_steps);
 
         // Check convergence if enabled.
-        if let Some(ref mut detector) = self.convergence_detector {
+        if self.convergence_detector.is_some() {
             let policy = self.extract_policy();
-            let converged = detector.check(&policy, self.episode_reward);
-            if converged && !self.stats.converged {
-                self.stats.converged = true;
-                self.stats.convergence_episode = Some(self.stats.episodes);
+            let episode_reward = self.episode_reward;
+            if let Some(ref mut detector) = self.convergence_detector {
+                let converged = detector.check(&policy, episode_reward);
+                if converged && !self.stats.converged {
+                    self.stats.converged = true;
+                    self.stats.convergence_episode = Some(self.stats.episodes);
+                }
             }
         }
 

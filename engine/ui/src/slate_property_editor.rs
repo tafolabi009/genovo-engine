@@ -2021,18 +2021,33 @@ impl PropertyEditor {
         // Update visibility based on filter.
         self.visible_property_count = 0;
         let filter = self.filter.clone();
+
+        // Pre-compute condition results to avoid borrow conflicts.
+        let condition_results: HashMap<String, bool> = {
+            let rows = &self.rows;
+            rows.values()
+                .filter_map(|row| {
+                    row.metadata.show_condition.as_ref().map(|condition| {
+                        let condition_met = rows
+                            .values()
+                            .find(|r| r.metadata.field_name == condition.property_name)
+                            .map(|r| condition.evaluate(&r.value))
+                            .unwrap_or(true);
+                        (row.metadata.field_name.clone(), condition_met)
+                    })
+                })
+                .collect()
+        };
+
         for row in self.rows.values_mut() {
             let was_visible = row.visible;
             row.visible = filter.matches(row);
 
             // Check show conditions.
-            if let Some(ref condition) = row.metadata.show_condition {
-                // Find the condition property value.
-                let condition_met = self
-                    .rows
-                    .values()
-                    .find(|r| r.metadata.field_name == condition.property_name)
-                    .map(|r| condition.evaluate(&r.value))
+            if row.metadata.show_condition.is_some() {
+                let condition_met = condition_results
+                    .get(&row.metadata.field_name)
+                    .copied()
                     .unwrap_or(true);
                 row.visible = row.visible && condition_met;
             }
@@ -2153,6 +2168,7 @@ impl PropertyEditor {
         }
 
         // Check property rows.
+        let mut deferred_bool_toggle: Option<(PropId, bool)> = None;
         for row in self.rows.values_mut() {
             if row.should_render()
                 && y >= row.y_position
@@ -2172,7 +2188,7 @@ impl PropertyEditor {
                     match &row.property_type {
                         PropertyType::Bool => {
                             if let PropertyValue::Bool(v) = row.value {
-                                self.set_value(row.id, PropertyValue::Bool(!v));
+                                deferred_bool_toggle = Some((row.id, !v));
                             }
                         }
                         PropertyType::Color => {
@@ -2193,6 +2209,9 @@ impl PropertyEditor {
                 }
                 break;
             }
+        }
+        if let Some((id, val)) = deferred_bool_toggle {
+            self.set_value(id, PropertyValue::Bool(val));
         }
     }
 

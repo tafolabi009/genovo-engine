@@ -500,10 +500,10 @@ impl<'a, T> ExactSizeIterator for SparseSetIter<'a, T> {}
 /// Iterator over (entity_index, &mut component) pairs.
 pub struct SparseSetIterMut<'a, T> {
     dense_iter: std::slice::Iter<'a, u32>,
-    data_iter: std::slice::IterMut<'a, T>,
+    data_iter: std::iter::IterMut<'a, T>,
 }
 
-impl<'a, T: 'a> Iterator for SparseSetIterMut<'a, T> {
+impl<'a, T> Iterator for SparseSetIterMut<'a, T> {
     type Item = (u32, &'a mut T);
 
     fn next(&mut self) -> Option<Self::Item> {

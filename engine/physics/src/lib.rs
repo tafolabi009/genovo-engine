@@ -53,7 +53,7 @@
 //!   partial degradation, chain-breaking propagation, fatigue stress accumulation
 //! - **Physics layers** (`physics_layers`): 32-layer collision filtering, collision
 //!   matrix, per-body layer assignment, raycast/trigger layer filtering, presets
-//! - **PBD Fluid v2** (`particles_v2`): position-based fluid dynamics with XSPH
+//! - **PBD Fluid v2** (`particles`): position-based fluid dynamics with XSPH
 //!   viscosity, incompressibility constraint, vorticity confinement, surface
 //!   reconstruction, boundary particle handling
 //!
@@ -68,7 +68,7 @@
 //!   stall modeling, parachute drag, glider physics, paper airplane tumble
 //! - **Wind system** (`wind_system`): directional wind, periodic/random gusts,
 //!   turbulence zones, Beaufort scale presets, spatial wind field sampling
-//! - **Advanced fracture** (`fracture_v2`): runtime mesh fracture, stress propagation,
+//! - **Advanced fracture** (`fracture`): runtime mesh fracture, stress propagation,
 //!   crack initiation/propagation, fragment mass/inertia, multi-material support
 //! - **Physics debug** (`physics_debug`): collision shape wireframes, contact points/
 //!   normals, joint axes/limits, velocity arrows, broadphase grid, constraint errors
@@ -90,13 +90,13 @@ pub mod continuous_collision;
 pub mod destruction;
 pub mod dynamics;
 pub mod fluid;
-pub mod fracture_v2;
+pub mod fracture;
 pub mod gravity_field;
 pub mod interface;
 pub mod magnetic_field;
 pub mod motor_joint;
 pub mod particle_physics;
-pub mod particles_v2;
+pub mod particles;
 pub mod physics_debug;
 pub mod physics_materials;
 pub mod physics_layers;
@@ -115,7 +115,7 @@ pub mod collision_events;
 
 // Enhanced physics world: sub-worlds, physics islands, sleeping island optimization,
 // broad-phase switching (SAP/grid/BVH), narrow-phase cache, constraint groups.
-pub mod physics_world_v2;
+pub mod physics_world;
 
 // Shape cast queries: convex shape sweep, box sweep, capsule sweep, sphere sweep,
 // layer filter, contact point generation, time of impact.
@@ -145,7 +145,7 @@ pub mod heightfield_collision;
 
 // Extended physics queries: shape overlap, closest point, contact test,
 // sweep with filter, query batching, result caching.
-pub mod physics_queries_v2;
+pub mod physics_queries;
 
 // Joint lifecycle management: create/destroy/enable/disable joints,
 // joint iteration, joint queries by body, breaking detection, events.
@@ -166,7 +166,7 @@ pub mod joint_motors;
 
 // Advanced collision filtering: collision groups, collision masks per shape,
 // ignore pairs, temporary ignore (duration-based), collision rules engine.
-pub mod collision_filters_v2;
+pub mod collision_filters;
 
 // Physics state serialization: save/load entire physics world state, body
 // positions/velocities, joint states, constraint states, deterministic replay.
@@ -256,7 +256,7 @@ pub use wind_system::{
     BeaufortScale, GustPattern, TurbulenceZone, WindField, WindReceiverComponent,
     WindSample, WindSettings, WindSource, WindSourceComponent, WindSourceId,
 };
-pub use fracture_v2::{
+pub use fracture::{
     CrackNetwork, CrackPattern, CrackSegment, FracturableComponent, FractureConfig,
     FractureEvent, FractureManager, FractureMaterial, FractureMeshV2, FractureSound,
     FractureSystem, Fragment, StressField,
@@ -289,7 +289,7 @@ pub use physics_layers::{
     BuiltinLayer, CollisionMatrix, LayerFilter, LayerGroup, LayerGroupManager,
     PhysicsLayerComponent, PhysicsLayerSystem, TriggerLayerFilter,
 };
-pub use particles_v2::{
+pub use particles::{
     BoundaryParticle, FluidParticle, FluidParticleComponent as FluidParticleComponentV2,
     FluidSettingsV2, FluidSimulationV2, FluidSimStats,
     SpatialHashGrid as FluidSpatialHash, SurfaceInfo,

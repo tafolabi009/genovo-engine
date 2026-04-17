@@ -473,7 +473,8 @@ impl ConnectionQualityAssessor {
             0.0
         };
 
-        let total = (rtt_score + jitter_score + loss_score).round() as u8;
+        let total: f64 = rtt_score + jitter_score + loss_score;
+        let total = total.round() as u8;
         self.current_score = total.min(100);
         self.current_indicator = QualityIndicator::from_score(self.current_score);
 

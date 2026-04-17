@@ -42,7 +42,7 @@ const EPSILON: f32 = 1e-6;
 // ---------------------------------------------------------------------------
 
 /// Strategy for distributing cascade split distances across the view frustum.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SplitScheme {
     /// Uniform distribution: each cascade covers an equal range of depth.
     Uniform,

@@ -349,8 +349,13 @@ impl EditorPreferences {
         self.recent_projects.retain(|p| p.path != path);
         self.recent_projects.insert(0, RecentEntry::new(path, name, timestamp));
         if self.recent_projects.len() > MAX_RECENT_PROJECTS {
-            self.recent_projects
-                .retain(|p| p.pinned || self.recent_projects.iter().position(|x| x.path == p.path).unwrap() < MAX_RECENT_PROJECTS);
+            // Keep pinned entries and the first MAX_RECENT_PROJECTS entries.
+            let keep_set: Vec<String> = self.recent_projects.iter()
+                .enumerate()
+                .filter(|(i, p)| p.pinned || *i < MAX_RECENT_PROJECTS)
+                .map(|(_, p)| p.path.clone())
+                .collect();
+            self.recent_projects.retain(|p| keep_set.contains(&p.path));
         }
     }
 

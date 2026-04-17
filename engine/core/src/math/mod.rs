@@ -158,7 +158,7 @@ impl Default for Transform {
 // ---------------------------------------------------------------------------
 
 /// A 2-D axis-aligned rectangle.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct Rect {
     /// Minimum corner (inclusive).
     pub min: Vec2,

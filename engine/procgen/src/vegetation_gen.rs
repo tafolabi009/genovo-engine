@@ -1167,8 +1167,8 @@ mod tests {
             ..TreeGenConfig::default_medium()
         };
         let species = TreeSpecies::oak();
-        let mut gen = TreeGenerator::new(config);
-        let tree = gen.generate(&species, 0.8);
+        let mut tree_gen = TreeGenerator::new(config);
+        let tree = tree_gen.generate(&species, 0.8);
 
         assert!(!tree.branches.is_empty());
         assert!(tree.height > 0.0);
@@ -1184,8 +1184,8 @@ mod tests {
             ..TreeGenConfig::default_medium()
         };
         let species = TreeSpecies::birch();
-        let mut gen = TreeGenerator::new(config);
-        let tree = gen.generate(&species, 1.0);
+        let mut tree_gen = TreeGenerator::new(config);
+        let tree = tree_gen.generate(&species, 1.0);
 
         assert!(!tree.leaves.is_empty());
     }
@@ -1199,8 +1199,8 @@ mod tests {
             ..TreeGenConfig::small()
         };
         let species = TreeSpecies::cactus();
-        let mut gen = TreeGenerator::new(config);
-        let tree = gen.generate(&species, 0.5);
+        let mut tree_gen = TreeGenerator::new(config);
+        let tree = tree_gen.generate(&species, 0.5);
 
         assert!(tree.leaves.is_empty());
     }
@@ -1215,8 +1215,8 @@ mod tests {
             ..TreeGenConfig::default_medium()
         };
         let species = TreeSpecies::pine();
-        let mut gen = TreeGenerator::new(config);
-        let tree = gen.generate(&species, 0.7);
+        let mut tree_gen = TreeGenerator::new(config);
+        let tree = tree_gen.generate(&species, 0.7);
 
         assert_eq!(tree.lod_count(), 4);
         // Each LOD should have fewer branches than the previous.

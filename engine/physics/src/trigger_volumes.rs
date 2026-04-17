@@ -735,7 +735,8 @@ impl TriggerSystem {
     /// be tested against triggers.
     pub fn update(&mut self, entities: &[TriggerEntity], dt: f32) {
         // Process deferred removals.
-        for id in self.pending_removals.drain(..) {
+        let removals: Vec<_> = self.pending_removals.drain(..).collect();
+        for id in removals {
             self.remove_trigger_immediate(id);
         }
 

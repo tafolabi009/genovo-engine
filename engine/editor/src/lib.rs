@@ -66,7 +66,8 @@ pub use prefab_editor::{
 };
 pub use animation_editor::{
     AnimationClip, AnimationEditor, AnimationEvent, AnimationPreview, AnimationTrack,
-    BlendNode, BlendNodeId, BlendTree, ClipId, CurveMode, EventId, Keyframe,
+    BlendNode, BlendNodeId, BlendTree, ClipId, CurveMode, EventId,
+    Keyframe as AnimKeyframe,
     KeyframeId, KeyframeValue, LoopMode, PlaybackState, TangentHandle, TangentLinkMode,
     TimelineViewState, TrackId, TrackTarget,
 };

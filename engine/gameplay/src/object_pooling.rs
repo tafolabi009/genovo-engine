@@ -229,17 +229,20 @@ impl ObjectPool {
     /// Acquire an entity from the pool.
     pub fn acquire(&mut self) -> Option<PooledHandle> {
         if let Some(index) = self.available_indices.pop_front() {
-            let entry = &mut self.entries[index as usize];
-            entry.state = PoolEntryState::InUse;
-            entry.acquire_time = Some(self.game_time);
-            entry.lifetime = 0.0;
-            entry.handle.generation += 1;
-            if self.config.auto_release {
-                entry.auto_release_time = Some(self.config.auto_release_timeout);
-            }
+            let handle = {
+                let entry = &mut self.entries[index as usize];
+                entry.state = PoolEntryState::InUse;
+                entry.acquire_time = Some(self.game_time);
+                entry.lifetime = 0.0;
+                entry.handle.generation += 1;
+                if self.config.auto_release {
+                    entry.auto_release_time = Some(self.config.auto_release_timeout);
+                }
+                entry.handle
+            };
             self.stats.total_acquires += 1;
             self.update_stats();
-            Some(entry.handle)
+            Some(handle)
         } else if self.config.auto_grow {
             if self.grow() {
                 self.acquire()

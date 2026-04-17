@@ -1217,7 +1217,7 @@ pub struct HighlightToken {
 }
 
 /// Language for syntax highlighting.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum HighlightLanguage {
     /// Rust-like syntax.
     RustLike,

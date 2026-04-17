@@ -1316,7 +1316,7 @@ impl OctreeCulling {
             }
             OctreeNode::Internal { children, .. } => {
                 for child in children.iter() {
-                    if let Some(ref child_node) = child {
+                    if let Some(child_node) = child {
                         self.query_node(child_node, frustum, result);
                     }
                 }
@@ -1331,7 +1331,7 @@ impl OctreeCulling {
             }
             OctreeNode::Internal { children, .. } => {
                 for child in children.iter() {
-                    if let Some(ref child_node) = child {
+                    if let Some(child_node) = child {
                         self.collect_all(child_node, result);
                     }
                 }

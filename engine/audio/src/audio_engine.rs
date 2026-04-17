@@ -126,7 +126,8 @@ impl AudioVoice {
 // Audio bus
 // ---------------------------------------------------------------------------
 
-pub type AudioBusId = u32;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct AudioBusId(pub u32);
 
 #[derive(Debug, Clone)]
 pub struct AudioBus {
@@ -148,12 +149,12 @@ impl AudioBus {
 }
 
 impl AudioBusId {
-    pub const Master: AudioBusId = 0;
-    pub const Music: AudioBusId = 1;
-    pub const SFX: AudioBusId = 2;
-    pub const Voice: AudioBusId = 3;
-    pub const Ambient: AudioBusId = 4;
-    pub const UI: AudioBusId = 5;
+    pub const Master: AudioBusId = AudioBusId(0);
+    pub const Music: AudioBusId = AudioBusId(1);
+    pub const SFX: AudioBusId = AudioBusId(2);
+    pub const Voice: AudioBusId = AudioBusId(3);
+    pub const Ambient: AudioBusId = AudioBusId(4);
+    pub const UI: AudioBusId = AudioBusId(5);
 }
 
 #[derive(Debug, Clone)]

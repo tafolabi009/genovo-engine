@@ -1412,13 +1412,16 @@ impl EditorState {
                 if self.entities.is_empty() {
                     self.log(LogLevel::Info, "No entities in scene");
                 } else {
-                    for (i, e) in self.entities.iter().enumerate() {
+                    let msgs: Vec<String> = self.entities.iter().enumerate().map(|(i, e)| {
                         let sel = if self.selected_entity == Some(i) { " *" } else { "" };
-                        self.log(LogLevel::Info, format!(
+                        format!(
                             "  [{}] {} ({}) pos=({:.1},{:.1},{:.1}){}",
                             i, e.name, e.entity_type,
                             e.position[0], e.position[1], e.position[2], sel
-                        ));
+                        )
+                    }).collect();
+                    for msg in msgs {
+                        self.log(LogLevel::Info, msg);
                     }
                 }
             }
@@ -3296,7 +3299,8 @@ fn submit_console(state: &mut EditorState) {
 fn draw_content_browser_tab(ui: &mut egui::Ui, state: &mut EditorState) {
     // Breadcrumb path bar
     ui.horizontal(|ui| {
-        let segments: Vec<&str> = state.asset_path.split(['/', '\\']).filter(|s| !s.is_empty()).collect();
+        let path_clone = state.asset_path.clone();
+        let segments: Vec<&str> = path_clone.split(['/', '\\']).filter(|s| !s.is_empty()).collect();
         ui.label(egui::RichText::new("res://").size(10.0).color(ACCENT_DIM));
         for (i, seg) in segments.iter().enumerate() {
             ui.label(egui::RichText::new(">").size(10.0).color(TEXT_MUTED));

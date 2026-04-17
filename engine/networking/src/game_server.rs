@@ -503,25 +503,37 @@ impl GameServer {
 
     /// Disconnect a client.
     pub fn disconnect_client(&mut self, id: ServerClientId, reason: &str) {
-        if let Some(client) = self.clients.get_mut(&id) {
+        let client_name = if let Some(client) = self.clients.get_mut(&id) {
             client.state = ClientConnectionState::Disconnecting;
+            let name = client.name.clone();
             self.events.push(ServerEvent::ClientDisconnected {
                 client_id: id,
                 reason: reason.to_string(),
             });
-            self.log_info("Network", &format!("Client '{}' disconnected: {}", client.name, reason));
+            Some(name)
+        } else {
+            None
+        };
+        if let Some(name) = client_name {
+            self.log_info("Network", &format!("Client '{}' disconnected: {}", name, reason));
         }
     }
 
     /// Kick a client.
     pub fn kick_client(&mut self, id: ServerClientId, reason: &str) {
-        if let Some(client) = self.clients.get_mut(&id) {
+        let client_name = if let Some(client) = self.clients.get_mut(&id) {
             client.state = ClientConnectionState::Kicked;
+            let name = client.name.clone();
             self.events.push(ServerEvent::ClientKicked {
                 client_id: id,
                 reason: reason.to_string(),
             });
-            self.log_warning("Admin", &format!("Client '{}' kicked: {}", client.name, reason));
+            Some(name)
+        } else {
+            None
+        };
+        if let Some(name) = client_name {
+            self.log_warning("Admin", &format!("Client '{}' kicked: {}", name, reason));
         }
     }
 

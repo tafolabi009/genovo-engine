@@ -818,13 +818,14 @@ pub fn preprocess_shader(source: &str, external_defines: &DefineSet) -> String {
         }
 
         if trimmed == "#else" {
-            if let Some(last) = condition_stack.last_mut() {
+            let stack_len = condition_stack.len();
+            if stack_len > 0 {
+                let parent_active = condition_stack[..stack_len - 1]
+                    .iter()
+                    .all(|&b| b);
                 if !*else_stack.last().unwrap_or(&false) {
-                    // Flip the condition (but only if parent blocks are active).
-                    let parent_active = condition_stack[..condition_stack.len() - 1]
-                        .iter()
-                        .all(|&b| b);
                     if parent_active {
+                        let last = condition_stack.last_mut().unwrap();
                         *last = !*last;
                     }
                     if let Some(e) = else_stack.last_mut() {

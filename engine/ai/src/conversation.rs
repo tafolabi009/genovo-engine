@@ -19,7 +19,7 @@ pub enum ConversationState { NotStarted, Active, Paused, Ended, Interrupted }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TurnState { Speaking, Listening, Thinking, Interrupted, WaitingForResponse }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SkillCheckType { Persuasion, Intimidation, Barter, Deception, Charm, Knowledge }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

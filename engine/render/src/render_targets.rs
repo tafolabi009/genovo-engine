@@ -699,7 +699,8 @@ impl RenderTargetManager {
                 return; // Stale handle.
             }
             tex.in_use = false;
-            let key = self.pool_key(&tex.desc);
+            let desc_clone = tex.desc.clone();
+            let key = Self::pool_key_static(&desc_clone);
             self.pool.entry(key).or_default().push(handle.index);
         }
     }
@@ -806,6 +807,17 @@ impl RenderTargetManager {
             total_memory_bytes: self.total_memory,
             pending_readbacks: self.readback_requests.iter().filter(|r| r.status == ReadbackStatus::Pending).count() as u32,
         }
+    }
+
+    /// Pool key from descriptor (static version to avoid borrow conflicts).
+    fn pool_key_static(desc: &RenderTextureDesc) -> u64 {
+        let mut key = desc.width as u64;
+        key = key.wrapping_mul(65537).wrapping_add(desc.height as u64);
+        key = key.wrapping_mul(65537).wrapping_add(desc.format as u64);
+        key = key.wrapping_mul(65537).wrapping_add(desc.mip_count as u64);
+        key = key.wrapping_mul(65537).wrapping_add(desc.sample_count as u64);
+        key = key.wrapping_mul(65537).wrapping_add(desc.usage.0 as u64);
+        key
     }
 
     /// Pool key from descriptor (hash-like key for grouping compatible textures).

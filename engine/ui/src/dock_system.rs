@@ -2187,8 +2187,7 @@ impl DockState {
     pub fn on_mouse_down(&mut self, pos: Vec2) -> bool {
         // Check floating windows first (front to back)
         for i in (0..self.floating_windows.len()).rev() {
-            let win = &self.floating_windows[i];
-            if win.hit_test(pos) {
+            if self.floating_windows[i].hit_test(pos) {
                 // Bring to front
                 let max_z = self
                     .floating_windows
@@ -2199,22 +2198,22 @@ impl DockState {
                 self.floating_windows[i].z_order = max_z + 1;
 
                 // Check title bar drag
-                if win.hit_test_title_bar(pos) {
+                if self.floating_windows[i].hit_test_title_bar(pos) {
                     self.floating_windows[i].dragging = true;
                     return true;
                 }
 
                 // Check resize edge
-                if win.resizable {
-                    if let Some(edge) = ResizeEdge::from_point(pos, win.position, win.size) {
+                if self.floating_windows[i].resizable {
+                    if let Some(edge) = ResizeEdge::from_point(pos, self.floating_windows[i].position, self.floating_windows[i].size) {
                         self.floating_windows[i].resize_edge = Some(edge);
                         return true;
                     }
                 }
 
                 // Check tabs in floating window
-                if let Some((node_id, tab_idx)) = win.root.hit_test_tab(pos) {
-                    let tab_id = if let Some(node) = win.root.find_node(node_id) {
+                if let Some((node_id, tab_idx)) = self.floating_windows[i].root.hit_test_tab(pos) {
+                    let tab_id = if let Some(node) = self.floating_windows[i].root.find_node(node_id) {
                         match node {
                             DockNode::Leaf { tabs, .. } => tabs.get(tab_idx).map(|t| t.id),
                             _ => None,
@@ -2225,7 +2224,7 @@ impl DockState {
 
                     if let Some(tid) = tab_id {
                         // Check close button
-                        if let Some(close_id) = win.root.hit_test_close_button(pos, self.font_size)
+                        if let Some(close_id) = self.floating_windows[i].root.hit_test_close_button(pos, self.font_size)
                         {
                             self.close_tab(close_id);
                             return true;

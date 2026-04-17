@@ -1300,10 +1300,11 @@ impl TypeChecker {
             // Check argument types.
             for (i, (param, arg)) in sig.params.iter().zip(arg_types.iter()).enumerate() {
                 if !is_assignable(&param.ty, arg) {
+                    let default_name = format!("argument {}", i + 1);
                     let param_name = param
                         .name
                         .as_deref()
-                        .unwrap_or(&format!("argument {}", i + 1));
+                        .unwrap_or(&default_name);
                     self.report_error(TypeError {
                         message: format!(
                             "argument '{}' of function '{}': expected '{}', got '{}'",

@@ -86,6 +86,9 @@ pub const DEFAULT_AO_STRENGTH: f32 = 1.0;
 /// Default AO radius for SSAO.
 pub const DEFAULT_AO_RADIUS: f32 = 0.5;
 
+/// Default AO power exponent.
+pub const DEFAULT_AO_POWER: f32 = 1.0;
+
 /// Maximum AO samples.
 pub const MAX_AO_SAMPLES: u32 = 64;
 

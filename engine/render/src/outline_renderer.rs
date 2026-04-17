@@ -235,7 +235,7 @@ impl Default for OutlineConfig {
 }
 
 /// Simple HSV to RGB conversion for rainbow animation.
-fn hsv_to_rgb(h: f32, s: f32, v: f32) -> [f32; 3] {
+pub fn hsv_to_rgb(h: f32, s: f32, v: f32) -> [f32; 3] {
     let h = h * 6.0;
     let i = h.floor() as i32;
     let f = h - h.floor();

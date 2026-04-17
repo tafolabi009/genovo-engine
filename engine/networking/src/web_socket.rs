@@ -1188,13 +1188,13 @@ impl WebSocket {
 
     /// Perform the WebSocket HTTP upgrade handshake.
     fn perform_handshake(&mut self) -> WsResult<()> {
+        // Generate a Sec-WebSocket-Key (16 random bytes, base64 encoded).
+        let ws_key = self.generate_ws_key();
+
         let stream = self
             .stream
             .as_mut()
             .ok_or(WsError::NotConnected)?;
-
-        // Generate a Sec-WebSocket-Key (16 random bytes, base64 encoded).
-        let ws_key = self.generate_ws_key();
 
         // Build the HTTP upgrade request.
         let mut request = format!(

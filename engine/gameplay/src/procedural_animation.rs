@@ -433,7 +433,8 @@ impl IdleFidgetLayer {
 
                 // Generate random targets
                 self.fidget_targets.clear();
-                for &bone in &self.bones {
+                let bones_snapshot: Vec<_> = self.bones.iter().copied().collect();
+                for bone in bones_snapshot {
                     let yaw = (self.random() - 0.5) * self.amplitude * 2.0 * DEG_TO_RAD;
                     let pitch = (self.random() - 0.5) * self.amplitude * 2.0 * DEG_TO_RAD;
                     let roll = (self.random() - 0.5) * self.amplitude * DEG_TO_RAD;

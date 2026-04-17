@@ -526,15 +526,17 @@ impl WaveComposer {
         let mut spawn_requests = Vec::new();
         let mut group_id = 0u32;
 
-        // Get valid enemy types for this level
-        let valid_types: Vec<&EnemyTypeDefinition> = self.enemy_types.values()
+        // Get valid enemy types for this level (clone to avoid borrow conflicts with self.random*())
+        let valid_types: Vec<EnemyTypeDefinition> = self.enemy_types.values()
             .filter(|t| t.valid_for_level(player_level) && !t.is_boss && !t.is_miniboss)
+            .cloned()
             .collect();
 
         // Spawn boss if needed
         if spawn_boss {
-            let boss_types: Vec<&EnemyTypeDefinition> = self.enemy_types.values()
+            let boss_types: Vec<EnemyTypeDefinition> = self.enemy_types.values()
                 .filter(|t| t.is_boss && t.valid_for_level(player_level))
+                .cloned()
                 .collect();
             if let Some(boss) = boss_types.first() {
                 let zone_idx = (self.random_u32() as usize) % zones.len().max(1);
@@ -558,8 +560,9 @@ impl WaveComposer {
 
         // Spawn miniboss if needed
         if spawn_miniboss && !spawn_boss {
-            let miniboss_types: Vec<&EnemyTypeDefinition> = self.enemy_types.values()
+            let miniboss_types: Vec<EnemyTypeDefinition> = self.enemy_types.values()
                 .filter(|t| t.is_miniboss && t.valid_for_level(player_level))
+                .cloned()
                 .collect();
             if let Some(mb) = miniboss_types.first() {
                 let zone_idx = (self.random_u32() as usize) % zones.len().max(1);
@@ -589,7 +592,6 @@ impl WaveComposer {
             // Weighted random selection
             let affordable: Vec<&EnemyTypeDefinition> = valid_types.iter()
                 .filter(|t| t.cost <= remaining_budget)
-                .copied()
                 .collect();
             if affordable.is_empty() {
                 break;

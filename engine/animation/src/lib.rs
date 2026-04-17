@@ -47,10 +47,10 @@ pub use spring_bone::{
     JiggleBone, SpringBone, SpringBoneChain, SpringBoneSystem, SpringCollider, WindSource,
 };
 pub use animation_graph::{
-    AnimGraphEvent, AnimationGraph, BlendMode, BlendNode, CameraMode as AnimCameraMode,
+    AnimGraphEvent, AnimationGraph, BlendMode, BlendNode as GraphBlendNode,
     EdgeId, GraphEdge, GraphNodeData, GraphOutput, IkNode, IkTarget, LayerNode, NodeId,
     NodeState, NodeType, ParamDescriptor, ParamId, ParamValue, SelectNode, StateNode,
-    SubGraphNode, TransitionCondition, TransitionState,
+    SubGraphNode, TransitionCondition as GraphTransitionCondition, TransitionState,
 };
 pub use foot_ik::{
     FootDefinition, FootIkDebugInfo, FootIkSettings, FootIkState, FootIkSystem, FootSide,

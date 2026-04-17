@@ -522,10 +522,12 @@ impl ShaderCache {
             if let Some(entry) = self.memory_cache.get_mut(&source_hash) {
                 entry.last_accessed = SystemTime::now();
                 entry.access_count += 1;
+                let result = entry.clone();
+                let bytecode_size = result.bytecode_size;
                 self.stats.hits += 1;
-                self.stats.bytes_loaded += entry.bytecode_size;
+                self.stats.bytes_loaded += bytecode_size;
                 self.touch_lru(source_hash);
-                return Ok(entry.clone());
+                return Ok(result);
             }
         }
 

@@ -266,9 +266,15 @@ pub enum KeyCode {
 ///
 /// Events are dispatched from leaves to root (bubbling) via the `on_*`
 /// methods.
-pub trait Widget: Send + Sync {
+pub trait Widget: Send + Sync + 'static {
     /// Returns a human-readable type name for debugging.
     fn type_name(&self) -> &str;
+
+    /// Upcast to `Any` for downcasting support.
+    fn as_any(&self) -> &dyn std::any::Any;
+
+    /// Upcast to `Any` (mutable) for downcasting support.
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
 
     /// Returns the widget's unique id.
     fn id(&self) -> WidgetId;
@@ -1020,14 +1026,14 @@ impl WidgetTree {
     pub fn get_as<T: Widget + 'static>(&self, id: WidgetId) -> Option<&T> {
         self.widgets
             .get(&id)
-            .and_then(|w| (w.as_ref() as &dyn std::any::Any).downcast_ref::<T>())
+            .and_then(|w| w.as_any().downcast_ref::<T>())
     }
 
     /// Downcast a widget to a concrete type (mutable).
     pub fn get_as_mut<T: Widget + 'static>(&mut self, id: WidgetId) -> Option<&mut T> {
         self.widgets
             .get_mut(&id)
-            .and_then(|w| (w.as_mut() as &mut dyn std::any::Any).downcast_mut::<T>())
+            .and_then(|w| w.as_any_mut().downcast_mut::<T>())
     }
 
     /// Returns the root widget id.
@@ -1523,6 +1529,9 @@ impl WidgetTree {
             WidgetEvent::FocusGained | WidgetEvent::FocusLost => {
                 // These are dispatched internally by set_focus / clear_focus.
             }
+            WidgetEvent::MouseEnter(_) | WidgetEvent::MouseLeave(_) => {
+                // These are dispatched internally by hover tracking.
+            }
         }
     }
 
@@ -1791,6 +1800,9 @@ impl Widget for PanelWidget {
         "Panel"
     }
 
+    fn as_any(&self) -> &dyn std::any::Any { self }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+
     fn id(&self) -> WidgetId {
         self.id
     }
@@ -1890,6 +1902,9 @@ impl Widget for LabelWidget {
     fn type_name(&self) -> &str {
         "Label"
     }
+
+    fn as_any(&self) -> &dyn std::any::Any { self }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
 
     fn id(&self) -> WidgetId {
         self.id
@@ -1997,6 +2012,9 @@ impl Widget for ButtonWidget {
     fn type_name(&self) -> &str {
         "Button"
     }
+
+    fn as_any(&self) -> &dyn std::any::Any { self }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
 
     fn id(&self) -> WidgetId {
         self.id
@@ -2137,6 +2155,9 @@ impl Widget for StackLayoutWidget {
     fn type_name(&self) -> &str {
         "StackLayout"
     }
+
+    fn as_any(&self) -> &dyn std::any::Any { self }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
 
     fn id(&self) -> WidgetId {
         self.id

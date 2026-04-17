@@ -205,8 +205,9 @@ impl AudioPlaybackManager {
     }
 
     pub fn play(&mut self, request: PlayRequest) -> Option<VoiceId> {
-        if request.delay > 0.0 {
-            self.pending_requests.push_back((request, request.delay));
+        let delay = request.delay;
+        if delay > 0.0 {
+            self.pending_requests.push_back((request, delay));
             return None;
         }
         self.play_immediate(request)
@@ -301,9 +302,14 @@ impl AudioPlaybackManager {
     }
 
     pub fn stop_with_fade(&mut self, voice_id: VoiceId, duration: f32) {
-        if let Some(v) = self.voices.iter_mut().find(|v| v.id == voice_id) {
+        let fade_vol = if let Some(v) = self.voices.iter_mut().find(|v| v.id == voice_id) {
             v.state = VoiceState::FadingOut;
-            self.add_fade(voice_id, FadeType::FadeOut, v.fade_volume, 0.0, duration);
+            Some(v.fade_volume)
+        } else {
+            None
+        };
+        if let Some(fv) = fade_vol {
+            self.add_fade(voice_id, FadeType::FadeOut, fv, 0.0, duration);
         }
     }
 

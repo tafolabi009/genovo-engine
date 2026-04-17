@@ -370,7 +370,7 @@ pub enum CoroutineResult {
 /// Mutable context passed to coroutine body functions.
 ///
 /// Provides access to the resume value and a mechanism to yield.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CoroutineContext {
     /// Value passed in via `resume()`.
     pub resume_value: CoroutineValue,
@@ -823,6 +823,18 @@ impl CoroutineManager {
         // Collect IDs of coroutines that are ready to resume.
         let mut ready_to_resume: Vec<(CoroutineId, CoroutineValue)> = Vec::new();
 
+        // Snapshot conditions, signals, and completed IDs to avoid borrow conflicts.
+        let conditions_snapshot = self.conditions.clone();
+        let completed_snapshot = self.completed_this_frame.clone();
+        let signals_snapshot = self.signals.clone();
+
+        // Collect coroutine done states for cross-referencing.
+        let done_states: HashMap<CoroutineId, bool> = self
+            .coroutines
+            .iter()
+            .map(|(id, c)| (*id, c.state.is_done()))
+            .collect();
+
         // Process wait states.
         for (id, coroutine) in &mut self.coroutines {
             if coroutine.state != CoroutineState::Suspended {
@@ -844,36 +856,25 @@ impl CoroutineManager {
                         *remaining == 0
                     }
                     WaitState::Condition { name } => {
-                        self.conditions.get(name).copied().unwrap_or(false)
+                        conditions_snapshot.get(name).copied().unwrap_or(false)
                     }
                     WaitState::CoroutineWait { id: wait_id } => {
-                        self.completed_this_frame.contains(wait_id)
-                            || self
-                                .coroutines
-                                .get(wait_id)
-                                .map(|c| c.state.is_done())
-                                .unwrap_or(true)
+                        completed_snapshot.contains(wait_id)
+                            || done_states.get(wait_id).copied().unwrap_or(true)
                     }
-                    WaitState::SignalWait { key } => self.signals.contains_key(key),
+                    WaitState::SignalWait { key } => signals_snapshot.contains_key(key),
                     WaitState::AllWait { ids } => ids.iter().all(|wait_id| {
-                        self.coroutines
-                            .get(wait_id)
-                            .map(|c| c.state.is_done())
-                            .unwrap_or(true)
+                        done_states.get(wait_id).copied().unwrap_or(true)
                     }),
                     WaitState::AnyWait { ids } => ids.iter().any(|wait_id| {
-                        self.coroutines
-                            .get(wait_id)
-                            .map(|c| c.state.is_done())
-                            .unwrap_or(true)
+                        done_states.get(wait_id).copied().unwrap_or(true)
                     }),
                 };
 
                 if should_resume {
                     // Determine the resume value.
                     let resume_val = match wait {
-                        WaitState::SignalWait { key } => self
-                            .signals
+                        WaitState::SignalWait { key } => signals_snapshot
                             .get(key)
                             .cloned()
                             .unwrap_or(CoroutineValue::Nil),

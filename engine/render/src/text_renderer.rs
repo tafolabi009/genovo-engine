@@ -898,29 +898,31 @@ impl TextRenderer {
 
     /// Draw text.
     pub fn draw_text(&mut self, text: &str, font_name: &str, params: &TextDrawParams) {
-        let font = match self.fonts.get(font_name) {
-            Some(f) => f,
-            None => return,
+        let (glyphs, atlas_handle) = {
+            let font = match self.fonts.get(font_name) {
+                Some(f) => f,
+                None => return,
+            };
+            (layout_text(text, font, params), font.atlas_handle)
         };
-
-        let glyphs = layout_text(text, font, params);
-        self.batch_glyphs(&glyphs, font, params);
+        self.batch_glyphs_direct(&glyphs, atlas_handle, params);
     }
 
     /// Draw rich text.
     pub fn draw_rich_text(&mut self, rich: &RichText, font_name: &str, params: &TextDrawParams) {
-        let font = match self.fonts.get(font_name) {
-            Some(f) => f,
-            None => return,
+        let (glyphs, atlas_handle) = {
+            let font = match self.fonts.get(font_name) {
+                Some(f) => f,
+                None => return,
+            };
+            (layout_rich_text(rich, font, params), font.atlas_handle)
         };
-
-        let glyphs = layout_rich_text(rich, font, params);
-        self.batch_glyphs(&glyphs, font, params);
+        self.batch_glyphs_direct(&glyphs, atlas_handle, params);
     }
 
-    /// Internal: batch positioned glyphs.
-    fn batch_glyphs(&mut self, glyphs: &[PositionedGlyph], font: &SdfFont, params: &TextDrawParams) {
-        let mut batch = TextBatch::new(font.atlas_handle, params.layer);
+    /// Internal: batch positioned glyphs (takes atlas handle directly to avoid borrow conflicts).
+    fn batch_glyphs_direct(&mut self, glyphs: &[PositionedGlyph], atlas_handle: u64, params: &TextDrawParams) {
+        let mut batch = TextBatch::new(atlas_handle, params.layer);
         batch.outline = params.outline;
         batch.shadow = params.shadow;
 

@@ -1065,5 +1065,5 @@ mod tests {
 }
 
 fn hsv_to_rgb(h: f32, s: f32, v: f32) -> [f32; 3] {
-    super::hsv_to_rgb(h, s, v)
+    crate::outline_renderer::hsv_to_rgb(h, s, v)
 }

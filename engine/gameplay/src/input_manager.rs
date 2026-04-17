@@ -346,16 +346,20 @@ impl InputManager {
 
         // Playback.
         if self.is_playing {
-            if let Some(ref recording) = self.playback {
+            let frame_data = self.playback.as_ref().and_then(|recording| {
                 if self.playback_frame < recording.frames.len() {
-                    let frame = &recording.frames[self.playback_frame];
-                    for (&key, &pressed) in &frame.button_states {
-                        self.set_key(key, pressed);
-                    }
-                    self.playback_frame += 1;
+                    Some(recording.frames[self.playback_frame].button_states.clone())
                 } else {
-                    self.is_playing = false;
+                    None
                 }
+            });
+            if let Some(states) = frame_data {
+                for (&key, &pressed) in &states {
+                    self.set_key(key, pressed);
+                }
+                self.playback_frame += 1;
+            } else if self.playback.is_some() {
+                self.is_playing = false;
             }
         }
 

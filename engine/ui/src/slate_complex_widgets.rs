@@ -4384,18 +4384,26 @@ impl SlateWidget for GraphEditor {
                             + node.compute_size(self.font_size, self.pin_spacing, self.title_height),
                     );
                     node.hovered = nr.contains(world_pos);
-                    for pin in &mut node.input_pins {
-                        if let Some(pp) =
-                            node.pin_position(pin.id, self.font_size, self.pin_spacing, self.title_height)
-                        {
-                            pin.hovered = (world_pos - pp).length() < self.pin_radius + 4.0;
+                    {
+                        let font_size = self.font_size;
+                        let pin_spacing = self.pin_spacing;
+                        let title_height = self.title_height;
+                        let pin_radius = self.pin_radius;
+                        let pin_positions: Vec<_> = node.input_pins.iter()
+                            .map(|p| (p.id, node.pin_position(p.id, font_size, pin_spacing, title_height)))
+                            .collect();
+                        for (i, (_, pp)) in pin_positions.iter().enumerate() {
+                            if let Some(pp) = pp {
+                                node.input_pins[i].hovered = (world_pos - *pp).length() < pin_radius + 4.0;
+                            }
                         }
-                    }
-                    for pin in &mut node.output_pins {
-                        if let Some(pp) =
-                            node.pin_position(pin.id, self.font_size, self.pin_spacing, self.title_height)
-                        {
-                            pin.hovered = (world_pos - pp).length() < self.pin_radius + 4.0;
+                        let pin_positions: Vec<_> = node.output_pins.iter()
+                            .map(|p| (p.id, node.pin_position(p.id, font_size, pin_spacing, title_height)))
+                            .collect();
+                        for (i, (_, pp)) in pin_positions.iter().enumerate() {
+                            if let Some(pp) = pp {
+                                node.output_pins[i].hovered = (world_pos - *pp).length() < pin_radius + 4.0;
+                            }
                         }
                     }
                 }
@@ -4428,33 +4436,34 @@ impl SlateWidget for GraphEditor {
                 }
 
                 // Check node title click (for dragging).
-                for node in self.nodes.iter_mut().rev() {
+                let mut found_node: Option<(u64, Vec2)> = None;
+                for i in (0..self.nodes.len()).rev() {
                     let nr = Rect::new(
-                        node.position,
-                        node.position
-                            + node.compute_size(
+                        self.nodes[i].position,
+                        self.nodes[i].position
+                            + self.nodes[i].compute_size(
                                 self.font_size,
                                 self.pin_spacing,
                                 self.title_height,
                             ),
                     );
                     if nr.contains(world_pos) {
-                        if !modifiers.ctrl {
-                            for n in &mut self.nodes {
-                                n.selected = false;
-                            }
-                        }
-                        // Must break and re-find because of borrow checker.
-                        let node_id = node.id;
-                        let node_pos = node.position;
-                        drop(node);
-                        if let Some(n) = self.nodes.iter_mut().find(|n| n.id == node_id) {
-                            n.selected = true;
-                        }
-                        self.dragging_node = Some(node_id);
-                        self.drag_node_start = world_pos - node_pos;
-                        return EventReply::Handled.then(EventReply::CaptureMouse);
+                        found_node = Some((self.nodes[i].id, self.nodes[i].position));
+                        break;
                     }
+                }
+                if let Some((node_id, node_pos)) = found_node {
+                    if !modifiers.ctrl {
+                        for n in &mut self.nodes {
+                            n.selected = false;
+                        }
+                    }
+                    if let Some(n) = self.nodes.iter_mut().find(|n| n.id == node_id) {
+                        n.selected = true;
+                    }
+                    self.dragging_node = Some(node_id);
+                    self.drag_node_start = world_pos - node_pos;
+                    return EventReply::Handled.then(EventReply::CaptureMouse);
                 }
 
                 // Background click -- start selection box.
@@ -4519,6 +4528,7 @@ impl SlateWidget for GraphEditor {
                         event
                     {
                         let world_pos = self.screen_to_world(*position, rect);
+                        let mut wire_target: Option<(u64, u64)> = None;
                         for node in &self.nodes {
                             for pin in node.input_pins.iter().chain(node.output_pins.iter()) {
                                 if let Some(pp) = node.pin_position(
@@ -4530,11 +4540,14 @@ impl SlateWidget for GraphEditor {
                                     if (world_pos - pp).length() < self.pin_radius + 4.0
                                         && node.id != _from_node
                                     {
-                                        self.add_wire(_from_node, _from_pin, node.id, pin.id);
+                                        wire_target = Some((node.id, pin.id));
                                         break;
                                     }
                                 }
                             }
+                        }
+                        if let Some((to_node, to_pin)) = wire_target {
+                            self.add_wire(_from_node, _from_pin, to_node, to_pin);
                         }
                     }
                     was_active = true;
@@ -4551,8 +4564,12 @@ impl SlateWidget for GraphEditor {
                         Vec2::new(start.x.min(end.x), start.y.min(end.y)),
                         Vec2::new(start.x.max(end.x), start.y.max(end.y)),
                     );
-                    for node in &mut self.nodes {
-                        let nr = self.node_screen_rect(node, rect);
+                    // Pre-compute node screen rects to avoid borrow conflict.
+                    let node_rects: Vec<Rect> = self.nodes.iter()
+                        .map(|n| self.node_screen_rect(n, rect))
+                        .collect();
+                    for (idx, node) in self.nodes.iter_mut().enumerate() {
+                        let nr = node_rects[idx];
                         // Check intersection.
                         if nr.min.x < sel_rect.max.x
                             && nr.max.x > sel_rect.min.x

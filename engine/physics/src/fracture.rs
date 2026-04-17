@@ -736,17 +736,32 @@ impl CrackNetwork {
         let mut new_fronts = Vec::new();
         let mut fronts_to_remove = Vec::new();
 
-        for (fi, &seg_idx) in self.active_fronts.iter().enumerate() {
-            let seg = &self.segments[seg_idx];
-            if seg.terminated || seg.energy < self.min_energy {
+        // Snapshot active fronts so we don't borrow self.active_fronts during iteration.
+        let active_snapshot: Vec<(usize, usize)> = self
+            .active_fronts
+            .iter()
+            .enumerate()
+            .map(|(fi, &si)| (fi, si))
+            .collect();
+
+        for (fi, seg_idx) in active_snapshot {
+            // Copy segment data we need to avoid holding a borrow on self.segments.
+            let seg_terminated = self.segments[seg_idx].terminated;
+            let seg_energy = self.segments[seg_idx].energy;
+            let seg_start = self.segments[seg_idx].start;
+            let seg_end = self.segments[seg_idx].end;
+            let seg_normal = self.segments[seg_idx].normal;
+            let seg_branch_depth = self.segments[seg_idx].branch_depth;
+
+            if seg_terminated || seg_energy < self.min_energy {
                 fronts_to_remove.push(fi);
                 continue;
             }
 
-            let direction = (seg.end - seg.start).normalize_or_zero();
-            let new_start = seg.end;
+            let direction = (seg_end - seg_start).normalize_or_zero();
+            let new_start = seg_end;
             let attenuation = (-self.energy_attenuation * step_length).exp();
-            let new_energy = seg.energy * attenuation;
+            let new_energy = seg_energy * attenuation;
 
             // Slight random deviation in crack direction
             let deviation = Vec3::new(
@@ -765,20 +780,20 @@ impl CrackNetwork {
             self.segments.push(CrackSegment {
                 start: new_start,
                 end: new_end,
-                normal: seg.normal,
+                normal: seg_normal,
                 energy: new_energy,
                 terminated: false,
-                branch_depth: seg.branch_depth,
+                branch_depth: seg_branch_depth,
             });
             new_fronts.push(new_seg_idx);
 
             // Branching
-            if seg.branch_depth < self.max_branch_depth
+            if seg_branch_depth < self.max_branch_depth
                 && self.next_random() < self.branch_probability
             {
                 // Create a branch at an angle
                 let branch_angle = 0.5 + self.next_random() * 0.5; // 0.5 to 1.0 rad
-                let perp = seg.normal.cross(direction).normalize_or_zero();
+                let perp = seg_normal.cross(direction).normalize_or_zero();
                 let branch_dir = (direction * branch_angle.cos() + perp * branch_angle.sin())
                     .normalize_or_zero();
 
@@ -786,10 +801,10 @@ impl CrackNetwork {
                 self.segments.push(CrackSegment {
                     start: new_start,
                     end: new_start + branch_dir * step_length,
-                    normal: seg.normal,
+                    normal: seg_normal,
                     energy: new_energy * 0.5,
                     terminated: false,
-                    branch_depth: seg.branch_depth + 1,
+                    branch_depth: seg_branch_depth + 1,
                 });
                 new_fronts.push(branch_idx);
             }

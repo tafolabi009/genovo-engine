@@ -705,7 +705,7 @@ impl GarbageCollector {
     }
 
     /// Allocate without triggering collection (internal use).
-    fn alloc_no_collect(&mut self, data: GcObjectData, gen: Generation) -> GcHandle {
+    fn alloc_no_collect(&mut self, data: GcObjectData, generation: Generation) -> GcHandle {
         let size = estimate_size(&data);
 
         let (index, slot_gen) = if let Some(free_idx) = self.free_list.pop() {
@@ -726,10 +726,10 @@ impl GarbageCollector {
             (idx, 0u32)
         };
 
-        let obj = GcObject::new(data, gen, slot_gen);
+        let obj = GcObject::new(data, generation, slot_gen);
         self.objects[index as usize] = obj;
 
-        match gen {
+        match generation {
             Generation::Nursery => self.nursery_count += 1,
             Generation::Old => self.old_gen_count += 1,
         }
@@ -906,12 +906,14 @@ impl GarbageCollector {
     /// Mark roots for a nursery collection (only scan nursery objects).
     fn mark_roots_for_nursery(&mut self) {
         // Mark from explicit roots.
-        for root in &self.roots {
-            self.mark_gray(root.index);
+        let root_indices: Vec<u32> = self.roots.iter().map(|r| r.index).collect();
+        for idx in root_indices {
+            self.mark_gray(idx);
         }
         // Mark from stack roots.
-        for root in &self.stack_roots.clone() {
-            self.mark_gray(root.index);
+        let stack_indices: Vec<u32> = self.stack_roots.iter().map(|r| r.index).collect();
+        for idx in stack_indices {
+            self.mark_gray(idx);
         }
         // Mark from global roots.
         let globals: Vec<u32> = self.global_roots.values().map(|h| h.index).collect();
@@ -927,11 +929,13 @@ impl GarbageCollector {
 
     /// Mark all roots (for full collection).
     fn mark_all_roots(&mut self) {
-        for root in &self.roots {
-            self.mark_gray(root.index);
+        let root_indices: Vec<u32> = self.roots.iter().map(|r| r.index).collect();
+        for idx in root_indices {
+            self.mark_gray(idx);
         }
-        for root in &self.stack_roots.clone() {
-            self.mark_gray(root.index);
+        let stack_indices: Vec<u32> = self.stack_roots.iter().map(|r| r.index).collect();
+        for idx in stack_indices {
+            self.mark_gray(idx);
         }
         let globals: Vec<u32> = self.global_roots.values().map(|h| h.index).collect();
         for idx in globals {

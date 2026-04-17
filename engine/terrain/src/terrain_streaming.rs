@@ -22,7 +22,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 // ---------------------------------------------------------------------------
 
 /// 2D coordinate of a terrain tile in the grid.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct TileCoord {
     pub x: i32,
     pub z: i32,

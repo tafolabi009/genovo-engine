@@ -1695,9 +1695,8 @@ impl BindingContext {
             }
 
             // Update dependency versions.
-            for (dep_idx, dep_id) in
-                self.computed_properties[i].dependencies.iter().enumerate()
-            {
+            let deps: Vec<_> = self.computed_properties[i].dependencies.clone();
+            for (dep_idx, dep_id) in deps.iter().enumerate() {
                 if let Some(storage) = self.properties.get(dep_id) {
                     self.computed_properties[i].dependency_versions[dep_idx] = storage.version;
                 }

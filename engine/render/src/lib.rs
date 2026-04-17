@@ -85,7 +85,7 @@ pub mod billboard;
 pub mod instanced_renderer;
 
 // Frame graph, pipeline orchestration, atlas packing, culling, and debug viz.
-pub mod render_graph_v2;
+pub mod render_graph;
 pub mod render_pipeline;
 pub mod texture_atlas;
 pub mod culling;
@@ -154,7 +154,7 @@ pub mod render_targets;
 pub mod shader_defines;
 
 // Advanced bloom: dual-filter, soft knee threshold, lens dirt, energy conservation.
-pub mod bloom_v2;
+pub mod bloom;
 
 // Colour space conversions: sRGB, Rec.2020, DCI-P3, ACES, Oklab, CIE LAB/LCH, deltaE.
 pub mod color_space;
@@ -169,7 +169,7 @@ pub mod render_statistics;
 pub mod screen_capture;
 
 // Extended tone mapping: local tone mapping, HDR histogram, auto-exposure, EV100.
-pub mod tone_map_v2;
+pub mod tone_map;
 
 // Vertex data compression: position/UV quantization, octahedron normals, TBN quaternion.
 pub mod vertex_compression;
@@ -205,7 +205,7 @@ pub mod ambient_system;
 // Enhanced deferred: thin G-buffer (albedo+metallic in one RT, normal+roughness in one),
 // stencil-based light volumes, light pre-pass (deferred lighting), tiled deferred,
 // cluster debug visualization.
-pub mod deferred_v2;
+// (merged into `deferred` module)
 
 // Ground Truth AO (GTAO): multi-bounce AO, bent normals, specular occlusion,
 // temporal accumulation, spatial denoising, quality presets.
@@ -218,7 +218,7 @@ pub mod atmospheric_effects;
 // Enhanced procedural sky: physically-based sky with ozone layer, multiple scattering
 // precomputation, aerial perspective LUT, planet rendering from space, ring system,
 // nebula backdrop.
-pub mod procedural_sky_v2;
+pub mod procedural_sky;
 
 // Material layering: height-based blend between layers, detail materials (add
 // wear/scratches), decal materials (project onto surfaces), material masks,
@@ -228,7 +228,7 @@ pub mod material_layering;
 // Enhanced shadows: contact shadows (screen-space ray march from light), area light
 // shadows, shadow bias auto-tuning, shadow cache (don't re-render static shadows),
 // shadow importance (skip shadows for distant/small lights).
-pub mod shadow_system_v2;
+pub mod shadow_system;
 
 // Lightmap GI baking: progressive path tracing, UV2 unwrapping, denoising,
 // HDR lightmap encoding, directional lightmaps, irradiance probe baking.
@@ -273,7 +273,7 @@ pub mod post_process_stack;
 
 // Enhanced DOF: circular DOF with bokeh shapes, foreground/background separation,
 // partial occlusion, smooth transitions, DOF from camera settings.
-pub mod depth_of_field_v2;
+pub mod depth_of_field;
 
 // Contact/screen-space shadows: ray-march from light direction in screen space,
 // thickness estimation, soft contact shadows, temporal filtering.
@@ -301,16 +301,19 @@ pub mod shader_cache;
 // Advanced render queue: sort by opaque (front-to-back), transparent
 // (back-to-front), shadow casters (by cascade), sky (last), overlay (on top);
 // priority override per material; queue clear/rebuild per frame.
-pub mod render_queue_v2;
+pub mod render_queue;
 
 // Material instances with GPU uniform buffers: per-material uniform buffer,
 // dirty tracking, batch update, material parameter animation, material LOD
 // (simplified shader at distance).
-pub mod material_instance_v2;
+pub mod material_instance;
 
 // G-Buffer configuration: configurable format (thin/standard/extended),
 // encode/decode functions, octahedron normal mapping, bandwidth analysis.
 pub mod gbuffer_layout;
+
+// Scene renderer: high-level scene rendering with lights, meshes, and cameras.
+pub mod scene_renderer;
 
 // ---------------------------------------------------------------------------
 // Re-exports

@@ -252,7 +252,8 @@ impl EditorCameraController {
             self.target_state = self.state.clone();
         } else {
             let factor = (self.speed.smoothing * dt).min(1.0);
-            lerp_camera_state(&self.state, &self.target_state, factor, &mut self.state);
+            let current = self.state.clone();
+            lerp_camera_state(&current, &self.target_state, factor, &mut self.state);
         }
     }
 

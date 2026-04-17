@@ -1019,7 +1019,7 @@ impl WeatherManager {
     /// Trigger a random weather change based on configured probabilities.
     fn trigger_random_weather(&mut self) {
         let states = WeatherState::ALL;
-        let probs = &self.scheduler.probabilities;
+        let probs = self.scheduler.probabilities.clone();
 
         // Compute total weight.
         let total_weight: f32 = probs.iter().take(states.len()).sum();
