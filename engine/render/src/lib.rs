@@ -284,6 +284,11 @@ pub mod screen_space_shadows;
 pub mod mesh_merger;
 
 // ---------------------------------------------------------------------------
+// Scene renderer -- complete GPU rendering pipeline with PBR, primitives, grid.
+// ---------------------------------------------------------------------------
+pub mod scene_renderer;
+
+// ---------------------------------------------------------------------------
 // Additional rendering subsystems (batch 6)
 // ---------------------------------------------------------------------------
 
