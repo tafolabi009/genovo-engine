@@ -199,6 +199,38 @@ pub mod primitive_batch;
 pub mod ambient_system;
 
 // ---------------------------------------------------------------------------
+// Additional rendering subsystems (batch 4)
+// ---------------------------------------------------------------------------
+
+// Enhanced deferred: thin G-buffer (albedo+metallic in one RT, normal+roughness in one),
+// stencil-based light volumes, light pre-pass (deferred lighting), tiled deferred,
+// cluster debug visualization.
+pub mod deferred_v2;
+
+// Ground Truth AO (GTAO): multi-bounce AO, bent normals, specular occlusion,
+// temporal accumulation, spatial denoising, quality presets.
+pub mod ground_truth_ao;
+
+// Additional atmosphere: aurora borealis, rainbows, halos, sundog (parhelion),
+// crepuscular rays (from volumetric light), heat haze (screen distortion), mirage effect.
+pub mod atmospheric_effects;
+
+// Enhanced procedural sky: physically-based sky with ozone layer, multiple scattering
+// precomputation, aerial perspective LUT, planet rendering from space, ring system,
+// nebula backdrop.
+pub mod procedural_sky_v2;
+
+// Material layering: height-based blend between layers, detail materials (add
+// wear/scratches), decal materials (project onto surfaces), material masks,
+// parallax occlusion mapping, clearcoat layer.
+pub mod material_layering;
+
+// Enhanced shadows: contact shadows (screen-space ray march from light), area light
+// shadows, shadow bias auto-tuning, shadow cache (don't re-render static shadows),
+// shadow importance (skip shadows for distant/small lights).
+pub mod shadow_system_v2;
+
+// ---------------------------------------------------------------------------
 // Re-exports
 // ---------------------------------------------------------------------------
 
