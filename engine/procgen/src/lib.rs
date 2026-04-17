@@ -32,3 +32,16 @@ pub use maze::{Maze, MazeAlgorithm, MazeCell};
 pub use name_gen::{Culture, NameGenerator};
 pub use noise_gen::{Biome, BiomeMap, CityGenerator, RiverGenerator, TerrainNoiseGenerator};
 pub use wfc::{WFCConstraints, WFCGrid, WFCResult, WFCSolver, WFCTile};
+pub use city_generator::{
+    Building, BuildingLot, BuildingUsage, CityBlock, CityConfig, CityGenerator, FacadeStyle,
+    GeneratedCity, IntersectionType, RoadCategory, RoadNode, RoadSegment, RoofType, ZoneType,
+};
+pub use vegetation_gen::{
+    Biome, Branch, ForestConfig, GeneratedTree, Leaf, TreeGenConfig, TreeGenerator, TreePlacement,
+    TreeSpecies, generate_forest_placements, select_species,
+};
+pub use texture_gen::{
+    TextureBuffer, generate_brick, generate_cellular, generate_dirt, generate_marble,
+    generate_normal_map, generate_perlin, generate_roughness_map, generate_rust, generate_voronoi,
+    generate_wood, make_seamless,
+};

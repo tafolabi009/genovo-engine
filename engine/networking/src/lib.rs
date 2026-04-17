@@ -5,13 +5,16 @@
 //! (UDP, WebSocket), remote procedure calls, lobby management, matchmaking,
 //! protocol framing, state synchronization, game session management,
 //! voice chat with mu-law codec, jitter buffering and VAD,
-//! network snapshot capture with delta compression, and high-level netcode
-//! integration for client/server architecture.
+//! network snapshot capture with delta compression, high-level netcode
+//! integration for client/server architecture, HTTP client, WebSocket
+//! client, and comprehensive network statistics.
 
 pub mod encryption;
+pub mod http_client;
 pub mod lobby;
 pub mod matchmaking;
 pub mod netcode;
+pub mod network_stats;
 pub mod prediction;
 pub mod protocol;
 pub mod replication;
@@ -21,6 +24,7 @@ pub mod snapshot;
 pub mod sync;
 pub mod transport;
 pub mod voice;
+pub mod web_socket;
 
 pub use prediction::{
     EntityHitbox, Hit, InputBuffer, InterpolationBuffer, LagCompensation,

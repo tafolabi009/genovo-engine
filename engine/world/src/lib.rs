@@ -10,10 +10,12 @@
 
 pub mod lod_manager;
 pub mod level;
+pub mod navigation;
 pub mod occlusion;
 pub mod partition;
 pub mod spline;
 pub mod streaming;
+pub mod world_physics;
 
 // Re-exports for convenience.
 pub use level::{Level, LevelManager, LevelSettings, SubLevel, SubLevelState};
@@ -34,4 +36,12 @@ pub use occlusion::{
 };
 pub use streaming::{
     StreamRequest, StreamRequestPriority, StreamingManager, StreamingStats, CellTransitionState,
+};
+pub use world_physics::{
+    BodyType, PhysicsBody, PhysicsBodyId, PhysicsLOD, PhysicsLODConfig, PhysicsProxy,
+    PhysicsRegion, RegionId, RegionShape, WorldPhysicsManager, WorldPhysicsStats,
+};
+pub use navigation::{
+    DynamicObstacle, LinkId, LinkType, NavConfig, NavFlags, NavPath, NavPoly, NavigationManager,
+    ObstacleId, OffMeshLink, PathCorridor, PolyId,
 };
