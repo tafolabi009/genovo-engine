@@ -4,16 +4,20 @@
 //! client-side prediction with rollback, pluggable network transports
 //! (UDP, WebSocket), remote procedure calls, lobby management, matchmaking,
 //! protocol framing, state synchronization, game session management,
-//! and voice chat with mu-law codec, jitter buffering, and VAD.
+//! voice chat with mu-law codec, jitter buffering and VAD,
+//! network snapshot capture with delta compression, and high-level netcode
+//! integration for client/server architecture.
 
 pub mod encryption;
 pub mod lobby;
 pub mod matchmaking;
+pub mod netcode;
 pub mod prediction;
 pub mod protocol;
 pub mod replication;
 pub mod rpc;
 pub mod session;
+pub mod snapshot;
 pub mod sync;
 pub mod transport;
 pub mod voice;
@@ -43,10 +47,19 @@ pub use matchmaking::{
     EloMatchmaker, EloRating, Match, MatchPlayerId, MatchPreferences,
     MatchmakingAlgorithm, MatchmakingQueue, PlayerProfile, QueueMatchmaker,
 };
+pub use netcode::{
+    ClientConnection, ClientEvent, ClientId, ClientInput, DisconnectReason,
+    InputBufferStats, NetInputBuffer, NetcodeClient, NetcodeServer, ServerEvent,
+    TickSystem,
+};
 pub use protocol::{
     Channel, ChannelConfig, ChannelOrdering, ChannelReliability, Compressor,
     Encryption, Fragment, Fragmenter, MessageRegistry, NetMessage, PacketStats,
     Protocol, ReassemblyBuffer,
+};
+pub use snapshot::{
+    ClientSnapshot, EntityState, ServerSnapshot, SnapshotBuffer, SnapshotCompressor,
+    SnapshotConfig, SnapshotSystem, WorldSnapshot,
 };
 pub use sync::{
     AOIEntity, AOIGrid, DeltaCompression, InterestManagement, InterestUpdate,

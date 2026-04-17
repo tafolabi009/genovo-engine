@@ -44,15 +44,25 @@
 //! ```
 
 pub mod bindings;
+pub mod coroutines;
 pub mod debugger;
+pub mod module_system;
 pub mod optimizer;
 pub mod stdlib;
 pub mod vm;
 
 pub use bindings::{BindingRegistry, ScriptBindable, ScriptComponent, ScriptSystem};
+pub use coroutines::{
+    Coroutine, CoroutineContext, CoroutineError, CoroutineEvent, CoroutineId,
+    CoroutineManager, CoroutineResult, CoroutineState, CoroutineValue, WaitFor,
+};
 pub use debugger::{
     Breakpoint, BreakpointCondition, DebugEvent, ExecutionState, PauseReason,
     ScriptDebugger, StackFrame, WatchExpression,
+};
+pub use module_system::{
+    CompiledChunk, ExportedValue, ImportStatement, ModuleError, ModuleRegistry,
+    ModuleResolver, ModuleValue, ScriptModule,
 };
 pub use optimizer::{BytecodeOptimizer, OptLevel, OptimizationStats};
 pub use stdlib::{get_stdlib, stdlib_function_names};
@@ -65,7 +75,11 @@ pub use vm::compiler::Compiler;
 /// Convenience prelude for common imports.
 pub mod prelude {
     pub use crate::bindings::{BindingRegistry, ScriptBindable, ScriptComponent, ScriptSystem};
+    pub use crate::coroutines::{
+        Coroutine, CoroutineId, CoroutineManager, CoroutineState, CoroutineValue, WaitFor,
+    };
     pub use crate::debugger::{ScriptDebugger, StackFrame, BreakpointCondition};
+    pub use crate::module_system::{ModuleRegistry, ScriptModule};
     pub use crate::optimizer::{BytecodeOptimizer, OptLevel};
     pub use crate::stdlib::get_stdlib;
     pub use crate::vm::{

@@ -21,6 +21,10 @@
 //! | [`progression`]          | XP, leveling, stats, skill trees, achievements    |
 //! | [`ability_system`]       | Abilities, cooldowns, combos, and effect dispatch |
 //! | [`interaction`]          | World interaction: doors, pickups, switches       |
+//! | [`movement`]             | Quake-style movement with multiple modes           |
+//! | [`weapon_system`]        | Weapons, fire modes, projectiles, hitscan, melee  |
+//! | [`vehicle_controller`]   | Vehicle gameplay: nitro, drifting, camera, audio  |
+//! | [`weather_system`]       | Dynamic weather with transitions and time-of-day |
 
 pub mod ability_system;
 pub mod ai_director;
@@ -30,10 +34,14 @@ pub mod damage_system;
 pub mod dialogue;
 pub mod interaction;
 pub mod inventory;
+pub mod movement;
 pub mod progression;
 pub mod quest_system;
 pub mod spawner;
 pub mod state_machine;
+pub mod vehicle_controller;
+pub mod weapon_system;
+pub mod weather_system;
 
 // ---------------------------------------------------------------------------
 // Re-exports: character controller
@@ -152,4 +160,40 @@ pub use state_machine::{
     AnyStateMachine, GameEvent, GameState, HistoryMode, State, StateMachine, StateMachineBuilder,
     StateMachineComponent, TimedTransition, Transition, TransitionResult,
     create_game_state_machine,
+};
+
+// ---------------------------------------------------------------------------
+// Re-exports: movement
+// ---------------------------------------------------------------------------
+
+pub use movement::{
+    AirMovement, GroundMovement, LadderMovement, ModeConfig, ModeConfigs, MovementComponent,
+    MovementInput, MovementMode, MovementSystem, WaterMovement,
+};
+
+// ---------------------------------------------------------------------------
+// Re-exports: weapon system
+// ---------------------------------------------------------------------------
+
+pub use weapon_system::{
+    FireEvent, FireMode, HitscanResult, Projectile, ProjectileSystem, RecoilPattern, Weapon,
+    WeaponInventory, WeaponState, WeaponSystem, WeaponType,
+};
+
+// ---------------------------------------------------------------------------
+// Re-exports: vehicle controller
+// ---------------------------------------------------------------------------
+
+pub use vehicle_controller::{
+    DriftState, DriftTracker, NitroBoost, SpeedUnit, VehicleAudio, VehicleCamera,
+    VehicleController, VehicleHudData, VehicleInput,
+};
+
+// ---------------------------------------------------------------------------
+// Re-exports: weather system
+// ---------------------------------------------------------------------------
+
+pub use weather_system::{
+    TimeOfDay, WeatherEffects, WeatherManager, WeatherParameters, WeatherSchedulerConfig,
+    WeatherSnapshot, WeatherState, WeatherTransition,
 };

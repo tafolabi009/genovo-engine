@@ -39,6 +39,10 @@
 //! - **Character physics** (`character_physics`): capsule-based character controller
 //!   with sweep tests, iterative collide-and-slide, step detection, ground queries,
 //!   slope handling, and moving platform tracking
+//! - **Spatial queries** (`spatial_query`): BVH-accelerated raycast, sphere cast,
+//!   box cast, overlap, and point queries with configurable filters
+//! - **Trigger volumes** (`trigger_volumes`): sensor shapes with enter/stay/exit
+//!   event tracking, callbacks, one-shot triggers, cooldowns, and layer filtering
 
 pub mod backends;
 pub mod buoyancy;
@@ -56,6 +60,8 @@ pub mod motor_joint;
 pub mod ragdoll;
 pub mod rope;
 pub mod softbody;
+pub mod spatial_query;
+pub mod trigger_volumes;
 pub mod vehicle;
 
 // Re-exports for ergonomic top-level access.
@@ -92,4 +98,13 @@ pub use character_physics::{
     CharacterCapsule, CharacterCollision, CharacterControllerManager, CharacterHandle,
     CharacterMoveResult, GroundInfo, GroundQuery, MovingPlatformTracker, PhysicsCharacter,
     PlatformHandle, StaticCollider, SurfaceMaterial, SweepHit,
+};
+pub use spatial_query::{
+    Aabb, BodyHandle, Bvh, BvhStats, ColliderProxy, MaterialId, OverlapHit, PhysicsQuery,
+    PointHit, QueryFilter, QueryShape, RayHit, ShapecastBuffer,
+    SweepHit as SpatialSweepHit,
+};
+pub use trigger_volumes::{
+    TriggerComponent, TriggerEntity, TriggerEvent, TriggerEventRecord, TriggerShape,
+    TriggerSystem, TriggerVolume,
 };

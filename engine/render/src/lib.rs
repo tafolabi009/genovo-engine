@@ -84,6 +84,13 @@ pub mod lod_mesh;
 pub mod billboard;
 pub mod instanced_renderer;
 
+// Frame graph, pipeline orchestration, atlas packing, culling, and debug viz.
+pub mod render_graph_v2;
+pub mod render_pipeline;
+pub mod texture_atlas;
+pub mod culling;
+pub mod debug_visualization;
+
 // ---------------------------------------------------------------------------
 // Re-exports
 // ---------------------------------------------------------------------------
