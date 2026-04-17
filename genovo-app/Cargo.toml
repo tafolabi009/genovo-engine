@@ -41,3 +41,6 @@ pollster = "0.4"
 serde_json = { workspace = true }
 glam = { workspace = true }
 bytemuck = { workspace = true }
+egui = "0.31"
+egui-wgpu = "0.31"
+egui-winit = { version = "0.31", default-features = false }
