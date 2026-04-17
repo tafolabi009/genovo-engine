@@ -59,6 +59,22 @@ pub mod visibility_system;
 // radius/box), raycast through scene, nearest entity, entity iteration with filters.
 pub mod scene_queries;
 
+// Enhanced scene graph: transformation cache, dirty bit propagation, spatial
+// index integration, scene queries, scene comparison, scene merging.
+pub mod scene_graph_v2;
+
+// Component serialization: serialize/deserialize components by name, component
+// factories, component cloning, component diffing.
+pub mod component_system;
+
+// Level streaming: async level load, level visibility, level transform offset,
+// level LOD, streaming volume triggers.
+pub mod level_streaming;
+
+// Scene templates/prefabs: template definition, template instantiation,
+// override tracking, template inheritance, template variables.
+pub mod scene_templates;
+
 // Hierarchy system re-exports.
     ancestor_path, collect_descendants, despawn_recursive, detach_children, hierarchy_depth,
     is_ancestor_of, lowest_common_ancestor, root_ancestor, set_parent, remove_parent, siblings,

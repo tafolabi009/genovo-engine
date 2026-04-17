@@ -190,6 +190,22 @@ pub use slate_platform::{
     WindowType,
 };
 
+// Enhanced graph editor: zoom levels, minimap, node categories, connection
+// validation, auto-layout (force-directed), comment boxes, reroute nodes.
+pub mod slate_graph_editor;
+
+// Timeline widget: track-based timeline, keyframe display, playhead scrubbing,
+// zoom/scroll, track mute/solo, multi-track selection.
+pub mod slate_timeline;
+
+// Enhanced tree list: column headers, multi-column tree, inline editing,
+// row drag-drop, custom row widgets, alternating row colors.
+pub mod slate_tree_list;
+
+// Viewport widget: 3D scene rendering in UI panel, camera controls
+// (orbit/fly/pan), gizmo overlay, selection highlighting, grid rendering.
+pub mod slate_viewport;
+
 // ---------------------------------------------------------------------------
 // Error type
 // ---------------------------------------------------------------------------

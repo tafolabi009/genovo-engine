@@ -147,3 +147,24 @@ pub mod archetype_storage;
 // extraction, exclusive system support, startup/shutdown systems, system
 // profiling hooks, pipeline visualization.
 pub mod system_pipeline;
+
+// Enhanced world: entity archetypes, component column storage, archetype graph
+// for entity migration, typed resource storage, exclusive world access, world
+// merge/split.
+pub mod world_v2;
+
+// Enhanced executor: automatic parallelism from system access, thread pool
+// integration, system sets with ordering, run conditions, fixed timestep systems.
+pub mod system_executor_v2;
+
+// Enhanced events: typed event channels, event readers with cursor, double-
+// buffered events, event drain, event forwarding, event statistics.
+pub mod event_system_v2;
+
+// Component registry: type-erased component operations, clone/drop/move/
+// serialize per type, component metadata, dynamic component types.
+pub mod component_registry;
+
+// Entity references: EntityRef (immutable entity accessor), EntityMut (mutable),
+// EntityWorldMut (world + entity), component iteration per entity.
+pub mod entity_reference;
