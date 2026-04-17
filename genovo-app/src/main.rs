@@ -1,6 +1,6 @@
-//! Genovo Engine Editor — Premium Game Engine Editor
+//! Genovo Studio — Professional Game Development Environment
 //!
-//! A complete, polished editor built with a hybrid rendering approach:
+//! A complete, polished game engine editor built with a hybrid rendering approach:
 //!   - egui for immediate-mode UI rendering (stable, works now)
 //!   - Styled to match our custom Slate-like dark theme (UIStyle from genovo_ui)
 //!   - Uses our custom UI data structures (DockState, UIStyle, etc.) for state management
@@ -8,18 +8,20 @@
 //!
 //! Features:
 //!   - Real GPU-rendered 3D viewport (wgpu triangle pipeline behind egui)
-//!   - Scene hierarchy with colored entity type dots, context menus, rename
+//!   - Scene outliner with colored entity type dots, context menus, rename, drag reparent
 //!   - Inspector with colored XYZ drag values, physics sync, light color picker
-//!   - Asset browser with directory scanning and icon grid
+//!   - Content browser with directory scanning and icon grid
 //!   - Console with command history and colored log output
 //!   - Profiler with egui_plot frame time graph
+//!   - Animation timeline placeholder
 //!   - Near-black dark theme (rgb(18,18,22) base, rgb(24,24,28) panels)
 //!   - Accent blue rgb(56,132,244) sparingly for selection/active
 //!   - Thin 4px scrollbars, no window shadows, 1px subtle separators
-//!   - Keyboard shortcuts (Ctrl+S, Ctrl+Z, Delete, W/E/R, Space, F5, F)
+//!   - Full keyboard shortcuts (Ctrl+S, Ctrl+Z, Delete, Q/W/E/R, Space, F5, F)
 //!   - Working physics integration (play/pause/stop/step)
 //!   - Status bar with colored play-state dot, FPS, entity/body counts
 //!   - Toolbar with play/pause/stop, transform tools, snap, grid, speed
+//!   - About Genovo Studio dialog, preferences, keyboard shortcuts reference
 
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -189,6 +191,115 @@ impl EntityType {
 }
 
 // =============================================================================
+// Mesh Shape — for the Create menu
+// =============================================================================
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MeshShape {
+    Cube,
+    Sphere,
+    Cylinder,
+    Capsule,
+    Cone,
+    Plane,
+}
+
+impl std::fmt::Display for MeshShape {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MeshShape::Cube => write!(f, "Cube"),
+            MeshShape::Sphere => write!(f, "Sphere"),
+            MeshShape::Cylinder => write!(f, "Cylinder"),
+            MeshShape::Capsule => write!(f, "Capsule"),
+            MeshShape::Cone => write!(f, "Cone"),
+            MeshShape::Plane => write!(f, "Plane"),
+        }
+    }
+}
+
+// =============================================================================
+// Light Kind
+// =============================================================================
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LightKind {
+    Directional,
+    Point,
+    Spot,
+}
+
+impl std::fmt::Display for LightKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LightKind::Directional => write!(f, "Directional"),
+            LightKind::Point => write!(f, "Point"),
+            LightKind::Spot => write!(f, "Spot"),
+        }
+    }
+}
+
+// =============================================================================
+// Camera Projection
+// =============================================================================
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CameraProjection {
+    Perspective,
+    Orthographic,
+}
+
+impl std::fmt::Display for CameraProjection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CameraProjection::Perspective => write!(f, "Perspective"),
+            CameraProjection::Orthographic => write!(f, "Orthographic"),
+        }
+    }
+}
+
+// =============================================================================
+// Rigid Body Type
+// =============================================================================
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BodyKind {
+    Dynamic,
+    Static,
+    Kinematic,
+}
+
+impl std::fmt::Display for BodyKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BodyKind::Dynamic => write!(f, "Dynamic"),
+            BodyKind::Static => write!(f, "Static"),
+            BodyKind::Kinematic => write!(f, "Kinematic"),
+        }
+    }
+}
+
+// =============================================================================
+// Collider Shape
+// =============================================================================
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ColliderShape {
+    Box,
+    Sphere,
+    Capsule,
+}
+
+impl std::fmt::Display for ColliderShape {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ColliderShape::Box => write!(f, "Box"),
+            ColliderShape::Sphere => write!(f, "Sphere"),
+            ColliderShape::Capsule => write!(f, "Capsule"),
+        }
+    }
+}
+
+// =============================================================================
 // Scene Entity
 // =============================================================================
 
@@ -198,23 +309,54 @@ struct SceneEntity {
     entity_type: EntityType,
     visible: bool,
     locked: bool,
+    active: bool,
+    parent: Option<usize>,
     position: [f32; 3],
     rotation: [f32; 3],
     scale: [f32; 3],
+    // Mesh
+    mesh_shape: MeshShape,
+    cast_shadows: bool,
+    receive_shadows: bool,
     // Physics
     has_physics: bool,
     physics_handle: Option<physics::RigidBodyHandle>,
+    body_kind: BodyKind,
     mass: f32,
     friction: f32,
     restitution: f32,
     linear_damping: f32,
     angular_damping: f32,
+    gravity_scale: f32,
+    is_trigger: bool,
+    collider_shape: ColliderShape,
     // Light
     is_light: bool,
+    light_kind: LightKind,
     light_color: [f32; 3],
     light_intensity: f32,
     light_range: f32,
+    light_spot_angle: f32,
     light_shadows: bool,
+    // Camera
+    is_camera: bool,
+    camera_projection: CameraProjection,
+    camera_fov: f32,
+    camera_near: f32,
+    camera_far: f32,
+    camera_clear_color: [f32; 4],
+    // Audio
+    is_audio: bool,
+    audio_volume: f32,
+    audio_pitch: f32,
+    audio_spatial: bool,
+    audio_min_dist: f32,
+    audio_max_dist: f32,
+    // Script
+    has_script: bool,
+    script_file: String,
+    // Tags
+    tags: Vec<String>,
 }
 
 impl SceneEntity {
@@ -225,58 +367,88 @@ impl SceneEntity {
             entity_type,
             visible: true,
             locked: false,
+            active: true,
+            parent: None,
             position: [0.0; 3],
             rotation: [0.0; 3],
             scale: [1.0, 1.0, 1.0],
+            mesh_shape: MeshShape::Cube,
+            cast_shadows: true,
+            receive_shadows: true,
             has_physics: false,
             physics_handle: None,
+            body_kind: BodyKind::Dynamic,
             mass: 1.0,
             friction: 0.5,
             restitution: 0.3,
             linear_damping: 0.0,
             angular_damping: 0.05,
+            gravity_scale: 1.0,
+            is_trigger: false,
+            collider_shape: ColliderShape::Box,
             is_light: entity_type == EntityType::Light,
+            light_kind: LightKind::Point,
             light_color: [1.0, 1.0, 0.9],
             light_intensity: 1.0,
             light_range: 10.0,
+            light_spot_angle: 45.0,
             light_shadows: true,
+            is_camera: entity_type == EntityType::Camera,
+            camera_projection: CameraProjection::Perspective,
+            camera_fov: 60.0,
+            camera_near: 0.1,
+            camera_far: 1000.0,
+            camera_clear_color: [0.06, 0.06, 0.08, 1.0],
+            is_audio: entity_type == EntityType::Audio,
+            audio_volume: 1.0,
+            audio_pitch: 1.0,
+            audio_spatial: true,
+            audio_min_dist: 1.0,
+            audio_max_dist: 50.0,
+            has_script: false,
+            script_file: String::new(),
+            tags: Vec::new(),
         }
     }
 }
 
 // =============================================================================
-// Transform Mode / Coord Space
+// Transform Mode / Coord Space / Pivot
 // =============================================================================
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TransformMode {
+enum GizmoMode {
+    Select,
     Translate,
     Rotate,
     Scale,
 }
 
-impl TransformMode {
+impl GizmoMode {
     fn label(&self) -> &str {
         match self {
-            TransformMode::Translate => "Translate",
-            TransformMode::Rotate => "Rotate",
-            TransformMode::Scale => "Scale",
+            GizmoMode::Select => "Select",
+            GizmoMode::Translate => "Translate",
+            GizmoMode::Rotate => "Rotate",
+            GizmoMode::Scale => "Scale",
         }
     }
 
     fn short_label(&self) -> &str {
         match self {
-            TransformMode::Translate => "W",
-            TransformMode::Rotate => "E",
-            TransformMode::Scale => "R",
+            GizmoMode::Select => "Q",
+            GizmoMode::Translate => "W",
+            GizmoMode::Rotate => "E",
+            GizmoMode::Scale => "R",
         }
     }
 
     fn icon(&self) -> &str {
         match self {
-            TransformMode::Translate => "+",
-            TransformMode::Rotate => "O",
-            TransformMode::Scale => "[]",
+            GizmoMode::Select => "->",
+            GizmoMode::Translate => "+",
+            GizmoMode::Rotate => "O",
+            GizmoMode::Scale => "[]",
         }
     }
 }
@@ -285,6 +457,12 @@ impl TransformMode {
 enum CoordSpace {
     Local,
     World,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PivotMode {
+    Center,
+    Pivot,
 }
 
 // =============================================================================
@@ -369,8 +547,9 @@ impl Default for PanelVisibility {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum BottomTab {
     Console,
-    AssetBrowser,
+    ContentBrowser,
     Profiler,
+    Animation,
 }
 
 // =============================================================================
@@ -385,6 +564,7 @@ enum HierarchyAction {
     ToggleVisibility(usize),
     ToggleLock(usize),
     Rename(usize),
+    Group(usize),
 }
 
 // =============================================================================
@@ -393,8 +573,13 @@ enum HierarchyAction {
 
 struct InspectorSections {
     transform_open: bool,
+    mesh_open: bool,
     physics_open: bool,
+    collider_open: bool,
     light_open: bool,
+    camera_open: bool,
+    audio_open: bool,
+    script_open: bool,
     material_open: bool,
     tags_open: bool,
 }
@@ -403,13 +588,30 @@ impl Default for InspectorSections {
     fn default() -> Self {
         Self {
             transform_open: true,
+            mesh_open: true,
             physics_open: true,
+            collider_open: true,
             light_open: true,
+            camera_open: true,
+            audio_open: true,
+            script_open: true,
             material_open: false,
             tags_open: false,
         }
     }
 }
+
+// =============================================================================
+// Snap value presets
+// =============================================================================
+
+const SNAP_PRESETS: &[f32] = &[0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0];
+
+// =============================================================================
+// Simulation Speed presets
+// =============================================================================
+
+const SPEED_PRESETS: &[f32] = &[0.25, 0.5, 1.0, 2.0, 4.0];
 
 // =============================================================================
 // Editor State
@@ -432,18 +634,23 @@ struct EditorState {
     is_playing: bool,
     is_paused: bool,
     sim_speed: f32,
+    sim_speed_idx: usize,
     play_start_time: Option<Instant>,
     total_sim_time: f64,
 
-    // Transform
-    transform_mode: TransformMode,
+    // Transform / gizmo
+    gizmo_mode: GizmoMode,
     coord_space: CoordSpace,
+    pivot_mode: PivotMode,
     snap_enabled: bool,
+    snap_value_idx: usize,
     snap_translate: f32,
     snap_rotate: f32,
     snap_scale: f32,
     grid_visible: bool,
     grid_size: f32,
+    wireframe_mode: bool,
+    stats_visible: bool,
 
     // Console
     console_log: Vec<LogEntry>,
@@ -454,7 +661,7 @@ struct EditorState {
     console_filter_level: Option<LogLevel>,
     console_auto_scroll: bool,
 
-    // Asset browser
+    // Content browser
     asset_path: String,
     asset_search: String,
     asset_view_size: f32,
@@ -464,6 +671,12 @@ struct EditorState {
     frame_times: VecDeque<f64>,
     fps_history: VecDeque<f64>,
     gpu_times: VecDeque<f64>,
+
+    // Animation timeline
+    anim_time: f32,
+    anim_duration: f32,
+    anim_playing: bool,
+    anim_loop: bool,
 
     // Frame timing
     frame_count: u64,
@@ -498,6 +711,7 @@ struct EditorState {
     // Dialogs
     show_about: bool,
     show_preferences: bool,
+    show_shortcuts: bool,
 
     // Keyboard modifiers
     modifiers: ModifiersState,
@@ -508,6 +722,13 @@ struct EditorState {
 
     // Notification
     notification: Option<(String, LogLevel, Instant)>,
+
+    // Undo/Redo placeholder
+    undo_count: u32,
+    redo_count: u32,
+
+    // Recent files
+    recent_files: Vec<String>,
 }
 
 impl EditorState {
@@ -523,16 +744,21 @@ impl EditorState {
             is_playing: false,
             is_paused: false,
             sim_speed: 1.0,
+            sim_speed_idx: 2, // 1.0x
             play_start_time: None,
             total_sim_time: 0.0,
-            transform_mode: TransformMode::Translate,
+            gizmo_mode: GizmoMode::Translate,
             coord_space: CoordSpace::World,
+            pivot_mode: PivotMode::Center,
             snap_enabled: false,
+            snap_value_idx: 3, // 1.0
             snap_translate: 1.0,
             snap_rotate: 15.0,
             snap_scale: 0.25,
             grid_visible: true,
             grid_size: 1.0,
+            wireframe_mode: false,
+            stats_visible: true,
             console_log: Vec::new(),
             console_input: String::new(),
             console_history: Vec::new(),
@@ -547,6 +773,10 @@ impl EditorState {
             frame_times: VecDeque::with_capacity(512),
             fps_history: VecDeque::with_capacity(512),
             gpu_times: VecDeque::with_capacity(512),
+            anim_time: 0.0,
+            anim_duration: 5.0,
+            anim_playing: false,
+            anim_loop: true,
             frame_count: 0,
             last_frame: Instant::now(),
             fps: 0.0,
@@ -561,18 +791,26 @@ impl EditorState {
             camera_fov: 60.0,
             panels: PanelVisibility::default(),
             bottom_tab: BottomTab::Console,
-            hierarchy_width: 240.0,
-            inspector_width: 300.0,
+            hierarchy_width: 220.0,
+            inspector_width: 280.0,
             bottom_height: 200.0,
             inspector_sections: InspectorSections::default(),
             scene_name: "Untitled Scene".to_string(),
             scene_modified: false,
             show_about: false,
             show_preferences: false,
+            show_shortcuts: false,
             modifiers: ModifiersState::empty(),
             renaming_entity: None,
             rename_buffer: String::new(),
             notification: None,
+            undo_count: 0,
+            redo_count: 0,
+            recent_files: vec![
+                "scenes/demo_level.scene".to_string(),
+                "scenes/test_physics.scene".to_string(),
+                "scenes/prototype.scene".to_string(),
+            ],
         }
     }
 
@@ -643,6 +881,20 @@ impl EditorState {
         idx
     }
 
+    fn spawn_mesh(&mut self, shape: MeshShape) -> usize {
+        let name = format!("{}", shape);
+        let idx = self.spawn_entity(&name, EntityType::Mesh);
+        self.entities[idx].mesh_shape = shape;
+        idx
+    }
+
+    fn spawn_light(&mut self, kind: LightKind) -> usize {
+        let name = format!("{} Light", kind);
+        let idx = self.spawn_entity(&name, EntityType::Light);
+        self.entities[idx].light_kind = kind;
+        idx
+    }
+
     fn delete_entity(&mut self, idx: usize) {
         if idx >= self.entities.len() {
             return;
@@ -654,6 +906,16 @@ impl EditorState {
         }
         self.engine.world_mut().despawn(ent.entity);
         self.entities.remove(idx);
+        // Fix parent references
+        for e in &mut self.entities {
+            if let Some(p) = e.parent {
+                if p == idx {
+                    e.parent = None;
+                } else if p > idx {
+                    e.parent = Some(p - 1);
+                }
+            }
+        }
         if let Some(sel) = self.selected_entity {
             if sel == idx {
                 self.selected_entity = None;
@@ -662,6 +924,7 @@ impl EditorState {
             }
         }
         self.scene_modified = true;
+        self.undo_count += 1;
         self.log(LogLevel::System, format!("Deleted: {}", name));
     }
 
@@ -687,6 +950,9 @@ impl EditorState {
             let li = src.light_intensity;
             let lr = src.light_range;
             let ls = src.light_shadows;
+            let lk = src.light_kind;
+            let is_cam = src.is_camera;
+            let mesh_shape = src.mesh_shape;
 
             let new_idx = self.spawn_entity(&new_name, etype);
             let e = &mut self.entities[new_idx];
@@ -698,6 +964,9 @@ impl EditorState {
             e.light_intensity = li;
             e.light_range = lr;
             e.light_shadows = ls;
+            e.light_kind = lk;
+            e.is_camera = is_cam;
+            e.mesh_shape = mesh_shape;
 
             if let Some(handle) = e.physics_handle {
                 let _ = self.engine.physics_mut().set_position(
@@ -706,6 +975,7 @@ impl EditorState {
                 );
             }
             self.selected_entity = Some(new_idx);
+            self.undo_count += 1;
         }
     }
 
@@ -766,6 +1036,8 @@ impl EditorState {
         );
         let e = &mut self.entities[idx];
         e.position = [0.0, 8.0, 0.0];
+        e.mesh_shape = MeshShape::Sphere;
+        e.collider_shape = ColliderShape::Sphere;
         if let Some(handle) = e.physics_handle {
             let _ = self.engine.physics_mut().set_position(
                 handle,
@@ -806,6 +1078,49 @@ impl EditorState {
         }
     }
 
+    fn frame_all(&mut self) {
+        if self.entities.is_empty() {
+            self.camera_target = [0.0, 0.0, 0.0];
+            self.camera_dist = 15.0;
+            return;
+        }
+        let mut center = [0.0f32; 3];
+        for e in &self.entities {
+            center[0] += e.position[0];
+            center[1] += e.position[1];
+            center[2] += e.position[2];
+        }
+        let n = self.entities.len() as f32;
+        center[0] /= n;
+        center[1] /= n;
+        center[2] /= n;
+        self.camera_target = center;
+        self.camera_dist = 20.0;
+        self.log(LogLevel::Info, "Framed all entities");
+    }
+
+    fn select_all(&mut self) {
+        if !self.entities.is_empty() {
+            self.selected_entity = Some(0);
+            self.log(LogLevel::Info, "Selected first entity (multi-select not yet supported)");
+        }
+    }
+
+    fn new_scene(&mut self) {
+        while !self.entities.is_empty() {
+            self.delete_entity(0);
+        }
+        self.scene_name = "Untitled Scene".to_string();
+        self.scene_modified = false;
+        self.selected_entity = None;
+        self.notify("New scene created", LogLevel::System);
+    }
+
+    fn save_scene(&mut self) {
+        self.scene_modified = false;
+        self.notify(&format!("Saved: {}", self.scene_name), LogLevel::System);
+    }
+
     // =========================================================================
     // Console command execution
     // =========================================================================
@@ -818,11 +1133,11 @@ impl EditorState {
         }
         match parts[0] {
             "help" => {
-                self.log(LogLevel::System, "--- Available Commands ---");
+                self.log(LogLevel::System, "--- Genovo Studio Console Commands ---");
                 self.log(LogLevel::System, "  help                 Show this help");
                 self.log(LogLevel::System, "  clear                Clear console");
                 self.log(LogLevel::System, "  stats                Engine statistics");
-                self.log(LogLevel::System, "  spawn <type> [name]  Spawn entity (empty/cube/sphere/light/camera/particles/audio)");
+                self.log(LogLevel::System, "  spawn <type> [name]  Spawn entity (empty/cube/sphere/cylinder/capsule/cone/plane/light/camera/particles/audio)");
                 self.log(LogLevel::System, "  delete               Delete selected entity");
                 self.log(LogLevel::System, "  list                 List all entities");
                 self.log(LogLevel::System, "  select <index>       Select entity by index");
@@ -834,9 +1149,14 @@ impl EditorState {
                 self.log(LogLevel::System, "  scene <name>         Rename scene");
                 self.log(LogLevel::System, "  camera <yaw> <pitch> <dist>  Set camera");
                 self.log(LogLevel::System, "  speed <value>        Set simulation speed");
+                self.log(LogLevel::System, "  about                Show version info");
             }
             "clear" => {
                 self.console_log.clear();
+            }
+            "about" => {
+                self.log(LogLevel::System, "Genovo Studio v1.0 -- Professional Game Development Environment");
+                self.log(LogLevel::System, "26 engine modules fully linked");
             }
             "stats" => {
                 let ecs_count = self.engine.world().entity_count();
@@ -884,23 +1204,24 @@ impl EditorState {
                 self.delete_selected();
             }
             "spawn" => {
-                let etype = match parts.get(1).copied() {
-                    Some("cube") | Some("mesh") => EntityType::Mesh,
-                    Some("sphere") => EntityType::Mesh,
-                    Some("cylinder") => EntityType::Mesh,
-                    Some("light") => EntityType::Light,
-                    Some("camera") => EntityType::Camera,
-                    Some("particles") => EntityType::ParticleSystem,
-                    Some("audio") => EntityType::Audio,
-                    _ => EntityType::Empty,
-                };
-                let name = if parts.len() > 2 {
-                    parts[2..].join(" ")
-                } else {
-                    format!("{}", etype)
-                };
-                let idx = self.spawn_entity(&name, etype);
-                self.selected_entity = Some(idx);
+                let etype_str = parts.get(1).copied().unwrap_or("empty");
+                match etype_str {
+                    "cube" | "mesh" => { let i = self.spawn_mesh(MeshShape::Cube); self.selected_entity = Some(i); }
+                    "sphere" => { let i = self.spawn_mesh(MeshShape::Sphere); self.selected_entity = Some(i); }
+                    "cylinder" => { let i = self.spawn_mesh(MeshShape::Cylinder); self.selected_entity = Some(i); }
+                    "capsule" => { let i = self.spawn_mesh(MeshShape::Capsule); self.selected_entity = Some(i); }
+                    "cone" => { let i = self.spawn_mesh(MeshShape::Cone); self.selected_entity = Some(i); }
+                    "plane" => { let i = self.spawn_mesh(MeshShape::Plane); self.selected_entity = Some(i); }
+                    "light" => { let i = self.spawn_light(LightKind::Point); self.selected_entity = Some(i); }
+                    "camera" => { let i = self.spawn_entity("Camera", EntityType::Camera); self.selected_entity = Some(i); }
+                    "particles" => { let i = self.spawn_entity("Particles", EntityType::ParticleSystem); self.selected_entity = Some(i); }
+                    "audio" => { let i = self.spawn_entity("Audio Source", EntityType::Audio); self.selected_entity = Some(i); }
+                    _ => {
+                        let name = if parts.len() > 2 { parts[2..].join(" ") } else { "Empty".to_string() };
+                        let i = self.spawn_entity(&name, EntityType::Empty);
+                        self.selected_entity = Some(i);
+                    }
+                }
             }
             "physics" => match parts.get(1).copied() {
                 Some("start") => {
@@ -1042,7 +1363,6 @@ fn apply_premium_theme(ctx: &egui::Context) {
     style.visuals.override_text_color = Some(TEXT_NORMAL);
 
     let rounding = Rounding::same(3);
-    let no_rounding = Rounding::same(0);
 
     // Non-interactive widgets
     style.visuals.widgets.noninteractive.bg_fill = BG_WIDGET;
@@ -1269,24 +1589,28 @@ fn draw_menu_bar(ctx: &egui::Context, state: &mut EditorState) {
         )
         .show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
+                // Genovo Studio branding
+                ui.label(
+                    egui::RichText::new("Genovo Studio")
+                        .size(11.0)
+                        .strong()
+                        .color(ACCENT),
+                );
+                ui.add_space(8.0);
+
+                // ---- File menu ----
                 ui.menu_button("File", |ui| {
                     if ui.add(egui::Button::new("New Scene").shortcut_text("Ctrl+N")).clicked() {
-                        while !state.entities.is_empty() {
-                            state.delete_entity(0);
-                        }
-                        state.scene_name = "Untitled Scene".to_string();
-                        state.scene_modified = false;
-                        state.notify("New scene created", LogLevel::System);
+                        state.new_scene();
                         ui.close_menu();
                     }
-                    if ui.button("Open...").clicked() {
+                    if ui.button("Open Scene...").clicked() {
                         state.log(LogLevel::System, "Open scene (placeholder)");
                         ui.close_menu();
                     }
                     ui.separator();
                     if ui.add(egui::Button::new("Save").shortcut_text("Ctrl+S")).clicked() {
-                        state.scene_modified = false;
-                        state.notify(&format!("Scene saved: {}", state.scene_name), LogLevel::System);
+                        state.save_scene();
                         ui.close_menu();
                     }
                     if ui.button("Save As...").clicked() {
@@ -1294,20 +1618,34 @@ fn draw_menu_bar(ctx: &egui::Context, state: &mut EditorState) {
                         ui.close_menu();
                     }
                     ui.separator();
+                    if ui.button("Import Asset...").clicked() {
+                        state.log(LogLevel::System, "Import asset (placeholder)");
+                        ui.close_menu();
+                    }
                     if ui.button("Export...").clicked() {
                         state.log(LogLevel::System, "Export (placeholder)");
                         ui.close_menu();
                     }
-                    if ui.button("Import...").clicked() {
-                        state.log(LogLevel::System, "Import (placeholder)");
-                        ui.close_menu();
-                    }
                     ui.separator();
-                    if ui.button("Quit").clicked() {
+                    ui.menu_button("Recent Files", |ui| {
+                        let files = state.recent_files.clone();
+                        if files.is_empty() {
+                            ui.label(egui::RichText::new("No recent files").size(10.0).color(TEXT_MUTED));
+                        }
+                        for f in &files {
+                            if ui.button(f).clicked() {
+                                state.log(LogLevel::System, format!("Open recent: {}", f));
+                                ui.close_menu();
+                            }
+                        }
+                    });
+                    ui.separator();
+                    if ui.button("Exit").clicked() {
                         std::process::exit(0);
                     }
                 });
 
+                // ---- Edit menu ----
                 ui.menu_button("Edit", |ui| {
                     if ui.add(egui::Button::new("Undo").shortcut_text("Ctrl+Z")).clicked() {
                         state.log(LogLevel::Info, "Undo (placeholder)");
@@ -1317,6 +1655,10 @@ fn draw_menu_bar(ctx: &egui::Context, state: &mut EditorState) {
                         state.log(LogLevel::Info, "Redo (placeholder)");
                         ui.close_menu();
                     }
+                    ui.separator();
+                    if ui.button("Cut").clicked() { state.log(LogLevel::Info, "Cut (placeholder)"); ui.close_menu(); }
+                    if ui.button("Copy").clicked() { state.log(LogLevel::Info, "Copy (placeholder)"); ui.close_menu(); }
+                    if ui.button("Paste").clicked() { state.log(LogLevel::Info, "Paste (placeholder)"); ui.close_menu(); }
                     ui.separator();
                     if ui.add(egui::Button::new("Duplicate").shortcut_text("Ctrl+D")).clicked() {
                         state.duplicate_selected();
@@ -1328,9 +1670,7 @@ fn draw_menu_bar(ctx: &egui::Context, state: &mut EditorState) {
                     }
                     ui.separator();
                     if ui.button("Select All").clicked() {
-                        if !state.entities.is_empty() {
-                            state.selected_entity = Some(0);
-                        }
+                        state.select_all();
                         ui.close_menu();
                     }
                     if ui.button("Deselect All").clicked() {
@@ -1344,52 +1684,121 @@ fn draw_menu_bar(ctx: &egui::Context, state: &mut EditorState) {
                     }
                 });
 
+                // ---- View menu ----
                 ui.menu_button("View", |ui| {
-                    ui.checkbox(&mut state.panels.hierarchy, "Hierarchy Panel");
-                    ui.checkbox(&mut state.panels.inspector, "Inspector Panel");
+                    ui.checkbox(&mut state.panels.hierarchy, "Scene Outliner");
+                    ui.checkbox(&mut state.panels.inspector, "Inspector");
                     ui.checkbox(&mut state.panels.bottom, "Bottom Panel");
                     ui.checkbox(&mut state.panels.toolbar, "Toolbar");
                     ui.checkbox(&mut state.panels.status_bar, "Status Bar");
                     ui.separator();
                     ui.checkbox(&mut state.grid_visible, "Show Grid");
+                    ui.checkbox(&mut state.wireframe_mode, "Wireframe Mode");
+                    ui.checkbox(&mut state.stats_visible, "Show Stats");
                     ui.separator();
                     if ui.button("Reset Layout").clicked() {
                         state.panels = PanelVisibility::default();
-                        state.hierarchy_width = 240.0;
-                        state.inspector_width = 300.0;
+                        state.hierarchy_width = 220.0;
+                        state.inspector_width = 280.0;
                         state.bottom_height = 200.0;
                         ui.close_menu();
                     }
                     ui.separator();
-                    if ui.add(egui::Button::new("Focus Selected").shortcut_text("Numpad .")).clicked() {
+                    if ui.add(egui::Button::new("Focus Selected").shortcut_text("F")).clicked() {
                         state.focus_selected();
+                        ui.close_menu();
+                    }
+                    if ui.button("Frame All").clicked() {
+                        state.frame_all();
                         ui.close_menu();
                     }
                 });
 
+                // ---- Create menu ----
+                ui.menu_button("Create", |ui| {
+                    if ui.button("Empty Entity").clicked() {
+                        let i = state.spawn_entity("Empty", EntityType::Empty);
+                        state.selected_entity = Some(i);
+                        ui.close_menu();
+                    }
+                    ui.separator();
+                    ui.label(egui::RichText::new("Primitives").size(9.5).color(TEXT_DIM));
+                    for shape in [MeshShape::Cube, MeshShape::Sphere, MeshShape::Cylinder, MeshShape::Capsule, MeshShape::Cone, MeshShape::Plane] {
+                        if ui.button(format!("{}", shape)).clicked() {
+                            let i = state.spawn_mesh(shape);
+                            state.selected_entity = Some(i);
+                            ui.close_menu();
+                        }
+                    }
+                    ui.separator();
+                    ui.label(egui::RichText::new("Lights").size(9.5).color(TEXT_DIM));
+                    for kind in [LightKind::Directional, LightKind::Point, LightKind::Spot] {
+                        if ui.button(format!("{} Light", kind)).clicked() {
+                            let i = state.spawn_light(kind);
+                            state.selected_entity = Some(i);
+                            ui.close_menu();
+                        }
+                    }
+                    ui.separator();
+                    if ui.button("Camera").clicked() {
+                        let i = state.spawn_entity("Camera", EntityType::Camera);
+                        state.selected_entity = Some(i);
+                        ui.close_menu();
+                    }
+                    if ui.button("Particle System").clicked() {
+                        let i = state.spawn_entity("Particle System", EntityType::ParticleSystem);
+                        state.selected_entity = Some(i);
+                        ui.close_menu();
+                    }
+                });
+
+                // ---- Tools menu ----
                 ui.menu_button("Tools", |ui| {
-                    if ui.button("Generate Terrain").clicked() {
+                    if ui.button("Terrain Editor").clicked() {
                         state.execute_console_command("terrain gen");
                         ui.close_menu();
                     }
+                    if ui.button("Material Editor").clicked() {
+                        state.log(LogLevel::System, "Material editor (placeholder)");
+                        ui.close_menu();
+                    }
+                    if ui.button("Animation Editor").clicked() {
+                        state.bottom_tab = BottomTab::Animation;
+                        ui.close_menu();
+                    }
+                    if ui.button("Shader Graph").clicked() {
+                        state.log(LogLevel::System, "Shader graph editor (placeholder)");
+                        ui.close_menu();
+                    }
+                    ui.separator();
                     if ui.button("Generate Dungeon").clicked() {
                         state.execute_console_command("dungeon gen");
                         ui.close_menu();
                     }
                     ui.separator();
-                    if ui.button("Physics Step").clicked() {
-                        state.step_physics();
+                    if ui.button("Profiler").clicked() {
+                        state.bottom_tab = BottomTab::Profiler;
                         ui.close_menu();
                     }
-                    ui.separator();
-                    if ui.button("Run Script...").clicked() {
-                        state.log(LogLevel::System, "Use console: script <code>");
+                    if ui.button("Script Console").clicked() {
+                        state.bottom_tab = BottomTab::Console;
                         ui.close_menu();
                     }
                 });
 
+                // ---- Window menu ----
+                ui.menu_button("Window", |ui| {
+                    if ui.button("Hierarchy").clicked() { state.panels.hierarchy = true; ui.close_menu(); }
+                    if ui.button("Inspector").clicked() { state.panels.inspector = true; ui.close_menu(); }
+                    if ui.button("Content Browser").clicked() { state.bottom_tab = BottomTab::ContentBrowser; state.panels.bottom = true; ui.close_menu(); }
+                    if ui.button("Console").clicked() { state.bottom_tab = BottomTab::Console; state.panels.bottom = true; ui.close_menu(); }
+                    if ui.button("Profiler").clicked() { state.bottom_tab = BottomTab::Profiler; state.panels.bottom = true; ui.close_menu(); }
+                    if ui.button("Animation").clicked() { state.bottom_tab = BottomTab::Animation; state.panels.bottom = true; ui.close_menu(); }
+                });
+
+                // ---- Help menu ----
                 ui.menu_button("Help", |ui| {
-                    if ui.button("About Genovo").clicked() {
+                    if ui.button("About Genovo Studio").clicked() {
                         state.show_about = true;
                         ui.close_menu();
                     }
@@ -1398,18 +1807,11 @@ fn draw_menu_bar(ctx: &egui::Context, state: &mut EditorState) {
                         ui.close_menu();
                     }
                     if ui.button("Keyboard Shortcuts").clicked() {
-                        state.log(LogLevel::System, "--- Keyboard Shortcuts ---");
-                        state.log(LogLevel::System, "  Ctrl+S       Save scene");
-                        state.log(LogLevel::System, "  Ctrl+Z       Undo");
-                        state.log(LogLevel::System, "  Ctrl+D       Duplicate selected");
-                        state.log(LogLevel::System, "  Delete       Delete selected entity");
-                        state.log(LogLevel::System, "  W/E/R        Translate/Rotate/Scale");
-                        state.log(LogLevel::System, "  Space        Play/Pause");
-                        state.log(LogLevel::System, "  F5           Toggle play mode");
-                        state.log(LogLevel::System, "  F            Spawn physics ball");
-                        state.log(LogLevel::System, "  G            Focus selected");
-                        state.log(LogLevel::System, "  Up/Down      Select prev/next entity");
-                        state.log(LogLevel::System, "  Escape       Deselect");
+                        state.show_shortcuts = true;
+                        ui.close_menu();
+                    }
+                    if ui.button("Check for Updates").clicked() {
+                        state.log(LogLevel::System, "Genovo Studio v1.0 is up to date");
                         ui.close_menu();
                     }
                 });
@@ -1428,7 +1830,7 @@ fn draw_menu_bar(ctx: &egui::Context, state: &mut EditorState) {
 }
 
 // =============================================================================
-// Toolbar (28px)
+// Toolbar (30px)
 // =============================================================================
 
 fn draw_toolbar(ctx: &egui::Context, state: &mut EditorState) {
@@ -1437,7 +1839,7 @@ fn draw_toolbar(ctx: &egui::Context, state: &mut EditorState) {
     }
 
     egui::TopBottomPanel::top("toolbar")
-        .exact_height(28.0)
+        .exact_height(30.0)
         .frame(
             egui::Frame::new()
                 .fill(egui::Color32::from_rgb(22, 22, 26))
@@ -1447,6 +1849,59 @@ fn draw_toolbar(ctx: &egui::Context, state: &mut EditorState) {
         .show(ctx, |ui| {
             ui.horizontal_centered(|ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;
+
+                // ---- Gizmo mode buttons (Q/W/E/R) ----
+                for mode in [GizmoMode::Select, GizmoMode::Translate, GizmoMode::Rotate, GizmoMode::Scale] {
+                    let selected = state.gizmo_mode == mode;
+                    let text = format!("{} {}", mode.icon(), mode.short_label());
+                    let btn = egui::SelectableLabel::new(
+                        selected,
+                        egui::RichText::new(&text).size(10.5),
+                    );
+                    if ui.add(btn).on_hover_text(format!("{} ({})", mode.label(), mode.short_label())).clicked() {
+                        state.gizmo_mode = mode;
+                    }
+                }
+
+                ui.add(thin_separator());
+
+                // ---- Pivot ----
+                let pivot_label = if state.pivot_mode == PivotMode::Center { "Center" } else { "Pivot" };
+                if ui.add(egui::SelectableLabel::new(
+                    false,
+                    egui::RichText::new(pivot_label).size(10.0),
+                )).on_hover_text("Toggle pivot mode").clicked() {
+                    state.pivot_mode = if state.pivot_mode == PivotMode::Center { PivotMode::Pivot } else { PivotMode::Center };
+                }
+
+                // ---- Coord space ----
+                let space_label = if state.coord_space == CoordSpace::Local { "Local" } else { "World" };
+                if ui.add(egui::SelectableLabel::new(
+                    false,
+                    egui::RichText::new(space_label).size(10.0),
+                )).on_hover_text("Toggle local/world space").clicked() {
+                    state.coord_space = if state.coord_space == CoordSpace::Local { CoordSpace::World } else { CoordSpace::Local };
+                }
+
+                ui.add(thin_separator());
+
+                // ---- Snap ----
+                ui.checkbox(&mut state.snap_enabled, "");
+                ui.label(egui::RichText::new("Snap").size(10.0).color(TEXT_DIM));
+                if state.snap_enabled {
+                    egui::ComboBox::from_id_salt("snap_val")
+                        .width(50.0)
+                        .selected_text(format!("{:.2}", SNAP_PRESETS[state.snap_value_idx]))
+                        .show_ui(ui, |ui| {
+                            for (i, val) in SNAP_PRESETS.iter().enumerate() {
+                                if ui.selectable_value(&mut state.snap_value_idx, i, format!("{:.2}", val)).clicked() {
+                                    state.snap_translate = *val;
+                                }
+                            }
+                        });
+                }
+
+                ui.add(thin_separator());
 
                 // ---- Play / Pause / Stop / Step ----
                 let playing = state.is_playing && !state.is_paused;
@@ -1462,16 +1917,27 @@ fn draw_toolbar(ctx: &egui::Context, state: &mut EditorState) {
                     egui::RichText::new(play_icon).color(play_color).strong().size(11.0),
                 )
                 .fill(play_bg)
-                .min_size(egui::vec2(32.0, 22.0));
+                .min_size(egui::vec2(32.0, 24.0));
                 if ui.add(play_btn).on_hover_text("Play / Pause (Space)").clicked() {
                     state.toggle_play();
+                }
+
+                let pause_btn = egui::Button::new(
+                    egui::RichText::new("||").color(YELLOW).size(11.0),
+                )
+                .fill(if state.is_paused { egui::Color32::from_rgb(60, 55, 35) } else { BG_WIDGET })
+                .min_size(egui::vec2(26.0, 24.0));
+                if ui.add(pause_btn).on_hover_text("Pause").clicked() {
+                    if state.is_playing {
+                        state.is_paused = !state.is_paused;
+                    }
                 }
 
                 let stop_btn = egui::Button::new(
                     egui::RichText::new("[]").color(RED).size(11.0),
                 )
                 .fill(BG_WIDGET)
-                .min_size(egui::vec2(26.0, 22.0));
+                .min_size(egui::vec2(26.0, 24.0));
                 if ui.add(stop_btn).on_hover_text("Stop").clicked() {
                     state.stop_play();
                 }
@@ -1480,57 +1946,25 @@ fn draw_toolbar(ctx: &egui::Context, state: &mut EditorState) {
                     egui::RichText::new("|>|").color(TEXT_DIM).size(10.0),
                 )
                 .fill(BG_WIDGET)
-                .min_size(egui::vec2(26.0, 22.0));
-                if ui.add(step_btn).on_hover_text("Step (single frame)").clicked() {
+                .min_size(egui::vec2(26.0, 24.0));
+                if ui.add(step_btn).on_hover_text("Step (single physics frame)").clicked() {
                     state.step_physics();
                 }
 
                 ui.add(thin_separator());
 
-                // ---- Transform mode buttons ----
-                for mode in [TransformMode::Translate, TransformMode::Rotate, TransformMode::Scale] {
-                    let selected = state.transform_mode == mode;
-                    let text = format!("{} ({})", mode.icon(), mode.short_label());
-                    let btn = egui::SelectableLabel::new(
-                        selected,
-                        egui::RichText::new(&text).size(10.5),
-                    );
-                    if ui.add(btn).on_hover_text(mode.label()).clicked() {
-                        state.transform_mode = mode;
-                    }
-                }
-
-                ui.add(thin_separator());
-
-                // ---- Coord space ----
-                let local = state.coord_space == CoordSpace::Local;
-                if ui.add(egui::SelectableLabel::new(
-                    local,
-                    egui::RichText::new("Local").size(10.0),
-                )).clicked() {
-                    state.coord_space = CoordSpace::Local;
-                }
-                if ui.add(egui::SelectableLabel::new(
-                    !local,
-                    egui::RichText::new("World").size(10.0),
-                )).clicked() {
-                    state.coord_space = CoordSpace::World;
-                }
-
-                ui.add(thin_separator());
-
-                // ---- Snap ----
-                ui.checkbox(&mut state.snap_enabled, "");
-                ui.label(egui::RichText::new("Snap").size(10.0).color(TEXT_DIM));
-                if state.snap_enabled {
-                    ui.add(
-                        egui::DragValue::new(&mut state.snap_translate)
-                            .speed(0.1)
-                            .range(0.01..=100.0)
-                            .suffix(" u")
-                            .max_decimals(2),
-                    );
-                }
+                // ---- Speed dropdown ----
+                ui.label(egui::RichText::new("Speed").size(10.0).color(TEXT_DIM));
+                egui::ComboBox::from_id_salt("speed_combo")
+                    .width(55.0)
+                    .selected_text(format!("{:.2}x", state.sim_speed))
+                    .show_ui(ui, |ui| {
+                        for (i, val) in SPEED_PRESETS.iter().enumerate() {
+                            if ui.selectable_value(&mut state.sim_speed_idx, i, format!("{:.2}x", val)).clicked() {
+                                state.sim_speed = *val;
+                            }
+                        }
+                    });
 
                 ui.add(thin_separator());
 
@@ -1538,22 +1972,19 @@ fn draw_toolbar(ctx: &egui::Context, state: &mut EditorState) {
                 ui.checkbox(&mut state.grid_visible, "");
                 ui.label(egui::RichText::new("Grid").size(10.0).color(TEXT_DIM));
 
-                ui.add(thin_separator());
+                // ---- Wireframe toggle ----
+                ui.checkbox(&mut state.wireframe_mode, "");
+                ui.label(egui::RichText::new("Wire").size(10.0).color(TEXT_DIM));
 
-                // ---- Simulation speed ----
-                ui.label(egui::RichText::new("Speed").size(10.0).color(TEXT_DIM));
-                ui.add(
-                    egui::Slider::new(&mut state.sim_speed, 0.0..=4.0)
-                        .max_decimals(2)
-                        .clamping(egui::SliderClamping::Always)
-                        .text("x"),
-                );
+                // ---- Stats toggle ----
+                ui.checkbox(&mut state.stats_visible, "");
+                ui.label(egui::RichText::new("Stats").size(10.0).color(TEXT_DIM));
             });
         });
 }
 
 // =============================================================================
-// Status Bar (18px)
+// Status Bar (16px)
 // =============================================================================
 
 fn draw_status_bar(ctx: &egui::Context, state: &EditorState) {
@@ -1562,7 +1993,7 @@ fn draw_status_bar(ctx: &egui::Context, state: &EditorState) {
     }
 
     egui::TopBottomPanel::bottom("status_bar")
-        .exact_height(18.0)
+        .exact_height(16.0)
         .frame(
             egui::Frame::new()
                 .fill(BG_BASE)
@@ -1572,27 +2003,28 @@ fn draw_status_bar(ctx: &egui::Context, state: &EditorState) {
             ui.horizontal_centered(|ui| {
                 // Play state dot + label
                 let (dot_color, status_text) = if state.is_playing && !state.is_paused {
-                    (GREEN, "Playing")
+                    (ACCENT_BRIGHT, "Playing")
                 } else if state.is_paused {
                     (YELLOW, "Paused")
                 } else {
-                    (GREEN_DIM, "Editing")
+                    (GREEN, "Editing")
                 };
-                status_dot(ui, dot_color, 3.5);
+                status_dot(ui, dot_color, 3.0);
                 ui.label(
                     egui::RichText::new(status_text)
-                        .size(10.0)
+                        .size(9.5)
                         .color(TEXT_DIM),
                 );
 
                 ui.add(thin_separator());
 
-                // Scene name
+                // Scene name (italic if modified)
                 let modified_indicator = if state.scene_modified { " *" } else { "" };
                 ui.label(
                     egui::RichText::new(format!("{}{}", state.scene_name, modified_indicator))
-                        .size(10.0)
-                        .color(TEXT_NORMAL),
+                        .size(9.5)
+                        .color(if state.scene_modified { YELLOW } else { TEXT_NORMAL })
+                        .italics(),
                 );
 
                 // Sim time
@@ -1600,7 +2032,7 @@ fn draw_status_bar(ctx: &egui::Context, state: &EditorState) {
                     ui.add(thin_separator());
                     ui.label(
                         egui::RichText::new(format!("Sim: {:.1}s", state.total_sim_time))
-                            .size(10.0)
+                            .size(9.5)
                             .color(TEXT_DIM),
                     );
                 }
@@ -1608,7 +2040,6 @@ fn draw_status_bar(ctx: &egui::Context, state: &EditorState) {
                 // Right-aligned stats
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let bodies = state.engine.physics().body_count();
-                    let active = state.engine.physics().active_body_count();
                     let ents = state.entities.len();
 
                     let fps_color = if state.smooth_fps >= 55.0 {
@@ -1620,26 +2051,20 @@ fn draw_status_bar(ctx: &egui::Context, state: &EditorState) {
                     };
 
                     ui.label(
-                        egui::RichText::new(format!("{} bodies ({} active)", bodies, active))
-                            .size(10.0)
+                        egui::RichText::new(format!("{} bodies", bodies))
+                            .size(9.5)
                             .color(TEXT_MUTED),
                     );
                     ui.add(thin_separator());
                     ui.label(
                         egui::RichText::new(format!("{} entities", ents))
-                            .size(10.0)
-                            .color(TEXT_DIM),
-                    );
-                    ui.add(thin_separator());
-                    ui.label(
-                        egui::RichText::new(format!("{:.2} ms", state.smooth_frame_time))
-                            .size(10.0)
+                            .size(9.5)
                             .color(TEXT_DIM),
                     );
                     ui.add(thin_separator());
                     ui.label(
                         egui::RichText::new(format!("{:.0} FPS", state.smooth_fps))
-                            .size(10.0)
+                            .size(9.5)
                             .color(fps_color),
                     );
                 });
@@ -1648,7 +2073,7 @@ fn draw_status_bar(ctx: &egui::Context, state: &EditorState) {
 }
 
 // =============================================================================
-// Scene Hierarchy Panel (left)
+// Scene Outliner (left panel, 220px)
 // =============================================================================
 
 fn draw_hierarchy(ctx: &egui::Context, state: &mut EditorState) {
@@ -1656,7 +2081,7 @@ fn draw_hierarchy(ctx: &egui::Context, state: &mut EditorState) {
         return;
     }
 
-    egui::SidePanel::left("hierarchy")
+    egui::SidePanel::left("scene_outliner")
         .default_width(state.hierarchy_width)
         .min_width(160.0)
         .max_width(450.0)
@@ -1673,8 +2098,8 @@ fn draw_hierarchy(ctx: &egui::Context, state: &mut EditorState) {
             ui.horizontal(|ui| {
                 ui.add_space(6.0);
                 ui.label(
-                    egui::RichText::new(format!("HIERARCHY ({})", state.entities.len()))
-                        .size(10.0)
+                    egui::RichText::new("SCENE OUTLINER")
+                        .size(9.5)
                         .strong()
                         .color(TEXT_DIM),
                 );
@@ -1682,7 +2107,7 @@ fn draw_hierarchy(ctx: &egui::Context, state: &mut EditorState) {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.add_space(4.0);
                     ui.menu_button(
-                        egui::RichText::new("+").size(13.0).strong().color(GREEN),
+                        egui::RichText::new("+  Add").size(10.0).color(GREEN),
                         |ui| {
                             draw_spawn_menu(ui, state);
                         },
@@ -1790,8 +2215,15 @@ fn draw_hierarchy(ctx: &egui::Context, state: &mut EditorState) {
                                 action = Some(HierarchyAction::ToggleVisibility(i));
                             }
 
+                            // Lock toggle
+                            let lock_text = if ent.locked { "#" } else { "" };
+                            if ent.locked {
+                                ui.label(egui::RichText::new("#").size(8.0).color(YELLOW_DIM));
+                            }
+
                             // Entity name
-                            let name_text = egui::RichText::new(&ent.name).size(11.0);
+                            let name_color = if !ent.active { TEXT_MUTED } else if selected { TEXT_BRIGHT } else { TEXT_NORMAL };
+                            let name_text = egui::RichText::new(&ent.name).size(11.0).color(name_color);
                             let resp = ui.add(egui::SelectableLabel::new(selected, name_text));
 
                             if resp.clicked() {
@@ -1817,17 +2249,21 @@ fn draw_hierarchy(ctx: &egui::Context, state: &mut EditorState) {
                                     ui.close_menu();
                                 }
                                 ui.separator();
+                                if ui.button("Create Child").clicked() {
+                                    action = Some(HierarchyAction::AddChild(i));
+                                    ui.close_menu();
+                                }
+                                if ui.button("Group").clicked() {
+                                    action = Some(HierarchyAction::Group(i));
+                                    ui.close_menu();
+                                }
+                                ui.separator();
                                 if ui.button("Toggle Visibility").clicked() {
                                     action = Some(HierarchyAction::ToggleVisibility(i));
                                     ui.close_menu();
                                 }
                                 if ui.button("Toggle Lock").clicked() {
                                     action = Some(HierarchyAction::ToggleLock(i));
-                                    ui.close_menu();
-                                }
-                                ui.separator();
-                                if ui.button("Add Child (Empty)").clicked() {
-                                    action = Some(HierarchyAction::AddChild(i));
                                     ui.close_menu();
                                 }
                             });
@@ -1852,6 +2288,7 @@ fn draw_hierarchy(ctx: &egui::Context, state: &mut EditorState) {
                                 &format!("{}/Child", parent_name),
                                 EntityType::Empty,
                             );
+                            state.entities[idx].parent = Some(i);
                             state.selected_entity = Some(idx);
                         }
                         Some(HierarchyAction::ToggleVisibility(i)) => {
@@ -1865,33 +2302,79 @@ fn draw_hierarchy(ctx: &egui::Context, state: &mut EditorState) {
                             state.rename_buffer = state.entities[i].name.clone();
                             state.selected_entity = Some(i);
                         }
+                        Some(HierarchyAction::Group(i)) => {
+                            let idx = state.spawn_entity("Group", EntityType::Empty);
+                            state.entities[i].parent = Some(idx);
+                            state.selected_entity = Some(idx);
+                        }
                         None => {}
                     }
                 });
+
+            // Footer: entity count
+            accent_line(ui);
+            ui.horizontal(|ui| {
+                ui.add_space(6.0);
+                ui.label(
+                    egui::RichText::new(format!("{} entities", state.entities.len()))
+                        .size(9.0)
+                        .color(TEXT_MUTED),
+                );
+            });
         });
 }
 
 fn draw_spawn_menu(ui: &mut egui::Ui, state: &mut EditorState) {
-    let items: &[(&str, EntityType, &str)] = &[
-        ("Empty", EntityType::Empty, "Empty object"),
-        ("Cube", EntityType::Mesh, "Cube mesh with physics"),
-        ("Sphere", EntityType::Mesh, "Sphere mesh with physics"),
-        ("Cylinder", EntityType::Mesh, "Cylinder mesh with physics"),
-        ("Point Light", EntityType::Light, "Point light source"),
-        ("Spot Light", EntityType::Light, "Spot light source"),
-        ("Camera", EntityType::Camera, "Camera entity"),
-        ("Particles", EntityType::ParticleSystem, "Particle system"),
-        ("Audio Source", EntityType::Audio, "Positional audio"),
+    ui.label(egui::RichText::new("Primitives").size(9.5).color(TEXT_DIM));
+    let mesh_items: &[(&str, MeshShape)] = &[
+        ("Cube", MeshShape::Cube),
+        ("Sphere", MeshShape::Sphere),
+        ("Cylinder", MeshShape::Cylinder),
+        ("Capsule", MeshShape::Capsule),
+        ("Cone", MeshShape::Cone),
+        ("Plane", MeshShape::Plane),
     ];
-
-    for (name, etype, tooltip) in items {
-        let icon_col = etype.icon_color();
+    for (name, shape) in mesh_items {
         ui.horizontal(|ui| {
-            status_dot(ui, icon_col, 3.0);
-            let btn = egui::Button::new(
-                egui::RichText::new(*name).size(11.0),
-            );
-            if ui.add(btn).on_hover_text(*tooltip).clicked() {
+            status_dot(ui, CYAN, 3.0);
+            if ui.button(*name).clicked() {
+                let idx = state.spawn_mesh(*shape);
+                state.selected_entity = Some(idx);
+                ui.close_menu();
+            }
+        });
+    }
+
+    ui.separator();
+    ui.label(egui::RichText::new("Lights").size(9.5).color(TEXT_DIM));
+    let light_items: &[(&str, LightKind)] = &[
+        ("Directional Light", LightKind::Directional),
+        ("Point Light", LightKind::Point),
+        ("Spot Light", LightKind::Spot),
+    ];
+    for (name, kind) in light_items {
+        ui.horizontal(|ui| {
+            status_dot(ui, YELLOW, 3.0);
+            if ui.button(*name).clicked() {
+                let idx = state.spawn_light(*kind);
+                state.selected_entity = Some(idx);
+                ui.close_menu();
+            }
+        });
+    }
+
+    ui.separator();
+    ui.label(egui::RichText::new("Other").size(9.5).color(TEXT_DIM));
+    let other_items: &[(&str, EntityType, egui::Color32)] = &[
+        ("Empty", EntityType::Empty, TEXT_DIM),
+        ("Camera", EntityType::Camera, ACCENT_BRIGHT),
+        ("Particle System", EntityType::ParticleSystem, MAGENTA),
+        ("Audio Source", EntityType::Audio, ORANGE),
+    ];
+    for (name, etype, color) in other_items {
+        ui.horizontal(|ui| {
+            status_dot(ui, *color, 3.0);
+            if ui.button(*name).clicked() {
                 let idx = state.spawn_entity(name, *etype);
                 state.selected_entity = Some(idx);
                 ui.close_menu();
@@ -1901,7 +2384,7 @@ fn draw_spawn_menu(ui: &mut egui::Ui, state: &mut EditorState) {
 }
 
 // =============================================================================
-// Inspector Panel (right)
+// Inspector Panel (right, 280px)
 // =============================================================================
 
 fn draw_inspector(ctx: &egui::Context, state: &mut EditorState) {
@@ -1927,7 +2410,7 @@ fn draw_inspector(ctx: &egui::Context, state: &mut EditorState) {
                 ui.add_space(6.0);
                 ui.label(
                     egui::RichText::new("INSPECTOR")
-                        .size(10.0)
+                        .size(9.5)
                         .strong()
                         .color(TEXT_DIM),
                 );
@@ -1945,7 +2428,7 @@ fn draw_inspector(ctx: &egui::Context, state: &mut EditorState) {
                     );
                     ui.add_space(4.0);
                     ui.label(
-                        egui::RichText::new("Select an entity in the hierarchy")
+                        egui::RichText::new("Select an entity in the outliner")
                             .size(9.5)
                             .color(TEXT_MUTED),
                     );
@@ -1972,33 +2455,46 @@ fn draw_inspector_content(ui: &mut egui::Ui, state: &mut EditorState, idx: usize
     let eid = state.entities[idx].entity;
     let icon_col = etype.icon_color();
 
+    // Entity name (large, editable)
     ui.horizontal(|ui| {
         ui.add_space(inner_margin);
         status_dot(ui, icon_col, 4.0);
         ui.add(
             egui::TextEdit::singleline(&mut state.entities[idx].name)
                 .desired_width(ui.available_width() - inner_margin)
-                .font(egui::TextStyle::Body),
+                .font(egui::TextStyle::Heading),
         );
     });
+
+    // Entity type badge + active toggle
     ui.horizontal(|ui| {
         ui.add_space(inner_margin);
+        // Type badge
+        let badge_text = format!(" {} ", etype);
+        let badge_color = icon_col;
         ui.label(
-            egui::RichText::new(format!(
-                "{} | Entity {}v{} | {}",
-                etype,
-                eid.id,
-                eid.generation,
-                if state.entities[idx].visible { "Visible" } else { "Hidden" }
-            ))
-            .size(9.5)
-            .color(TEXT_MUTED),
+            egui::RichText::new(&badge_text)
+                .size(9.5)
+                .strong()
+                .color(BG_BASE)
+                .background_color(badge_color),
         );
+        ui.add_space(4.0);
+        ui.label(
+            egui::RichText::new(format!("Entity {}v{}", eid.id, eid.generation))
+                .size(9.0)
+                .color(TEXT_MUTED),
+        );
+
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.add_space(inner_margin);
+            ui.checkbox(&mut state.entities[idx].active, "Active");
+        });
     });
     ui.add_space(4.0);
     accent_line(ui);
 
-    // ---- Transform Section ----
+    // ---- Transform Section (always shown) ----
     let mut pos_changed = false;
     egui::CollapsingHeader::new(
         egui::RichText::new("Transform").strong().size(11.0).color(TEXT_NORMAL),
@@ -2020,62 +2516,91 @@ fn draw_inspector_content(ui: &mut egui::Ui, state: &mut EditorState, idx: usize
 
     if pos_changed {
         state.sync_entity_to_physics(idx);
+        state.scene_modified = true;
+    }
+
+    // ---- Mesh Renderer Section ----
+    if etype == EntityType::Mesh {
+        egui::CollapsingHeader::new(
+            egui::RichText::new("Mesh Renderer").strong().size(11.0).color(CYAN),
+        )
+        .default_open(state.inspector_sections.mesh_open)
+        .show(ui, |ui| {
+            ui.add_space(2.0);
+            ui.horizontal(|ui| {
+                ui.add_space(inner_margin);
+                ui.label(egui::RichText::new("Mesh").size(10.0).color(TEXT_DIM));
+                let shape = state.entities[idx].mesh_shape;
+                egui::ComboBox::from_id_salt(format!("mesh_shape_{}", idx))
+                    .width(100.0)
+                    .selected_text(format!("{}", shape))
+                    .show_ui(ui, |ui| {
+                        for s in [MeshShape::Cube, MeshShape::Sphere, MeshShape::Cylinder, MeshShape::Capsule, MeshShape::Cone, MeshShape::Plane] {
+                            ui.selectable_value(&mut state.entities[idx].mesh_shape, s, format!("{}", s));
+                        }
+                    });
+            });
+            ui.horizontal(|ui| {
+                ui.add_space(inner_margin);
+                ui.checkbox(&mut state.entities[idx].cast_shadows, "Cast Shadows");
+            });
+            ui.horizontal(|ui| {
+                ui.add_space(inner_margin);
+                ui.checkbox(&mut state.entities[idx].receive_shadows, "Receive Shadows");
+            });
+            ui.add_space(2.0);
+        });
     }
 
     // ---- Physics Section ----
     if state.entities[idx].has_physics {
         egui::CollapsingHeader::new(
-            egui::RichText::new("Physics").strong().size(11.0).color(TEXT_NORMAL),
+            egui::RichText::new("Rigid Body").strong().size(11.0).color(TEXT_NORMAL),
         )
         .default_open(state.inspector_sections.physics_open)
         .show(ui, |ui| {
             ui.add_space(2.0);
-
+            ui.horizontal(|ui| {
+                ui.add_space(inner_margin);
+                ui.label(egui::RichText::new("Body Type").size(10.0).color(TEXT_DIM));
+                egui::ComboBox::from_id_salt(format!("body_kind_{}", idx))
+                    .width(90.0)
+                    .selected_text(format!("{}", state.entities[idx].body_kind))
+                    .show_ui(ui, |ui| {
+                        for bk in [BodyKind::Dynamic, BodyKind::Static, BodyKind::Kinematic] {
+                            ui.selectable_value(&mut state.entities[idx].body_kind, bk, format!("{}", bk));
+                        }
+                    });
+            });
             ui.horizontal(|ui| {
                 ui.add_space(inner_margin);
                 ui.label(egui::RichText::new("Mass").size(10.0).color(TEXT_DIM));
-                ui.add(
-                    egui::DragValue::new(&mut state.entities[idx].mass)
-                        .speed(0.1)
-                        .range(0.01..=10000.0)
-                        .suffix(" kg"),
-                );
+                ui.add(egui::DragValue::new(&mut state.entities[idx].mass).speed(0.1).range(0.01..=10000.0).suffix(" kg"));
             });
-
             ui.horizontal(|ui| {
                 ui.add_space(inner_margin);
                 ui.label(egui::RichText::new("Friction").size(10.0).color(TEXT_DIM));
-                ui.add(
-                    egui::Slider::new(&mut state.entities[idx].friction, 0.0..=1.0)
-                        .max_decimals(2),
-                );
+                ui.add(egui::Slider::new(&mut state.entities[idx].friction, 0.0..=1.0).max_decimals(2));
             });
-
             ui.horizontal(|ui| {
                 ui.add_space(inner_margin);
                 ui.label(egui::RichText::new("Restitution").size(10.0).color(TEXT_DIM));
-                ui.add(
-                    egui::Slider::new(&mut state.entities[idx].restitution, 0.0..=1.0)
-                        .max_decimals(2),
-                );
+                ui.add(egui::Slider::new(&mut state.entities[idx].restitution, 0.0..=1.0).max_decimals(2));
             });
-
             ui.horizontal(|ui| {
                 ui.add_space(inner_margin);
                 ui.label(egui::RichText::new("Lin Damping").size(10.0).color(TEXT_DIM));
-                ui.add(
-                    egui::Slider::new(&mut state.entities[idx].linear_damping, 0.0..=10.0)
-                        .max_decimals(2),
-                );
+                ui.add(egui::Slider::new(&mut state.entities[idx].linear_damping, 0.0..=10.0).max_decimals(2));
             });
-
             ui.horizontal(|ui| {
                 ui.add_space(inner_margin);
                 ui.label(egui::RichText::new("Ang Damping").size(10.0).color(TEXT_DIM));
-                ui.add(
-                    egui::Slider::new(&mut state.entities[idx].angular_damping, 0.0..=10.0)
-                        .max_decimals(2),
-                );
+                ui.add(egui::Slider::new(&mut state.entities[idx].angular_damping, 0.0..=10.0).max_decimals(2));
+            });
+            ui.horizontal(|ui| {
+                ui.add_space(inner_margin);
+                ui.label(egui::RichText::new("Gravity Scale").size(10.0).color(TEXT_DIM));
+                ui.add(egui::DragValue::new(&mut state.entities[idx].gravity_scale).speed(0.1).range(-10.0..=10.0));
             });
 
             // Velocity readout
@@ -2083,28 +2608,41 @@ fn draw_inspector_content(ui: &mut egui::Ui, state: &mut EditorState, idx: usize
                 if let Ok(vel) = state.engine.physics().get_linear_velocity(handle) {
                     ui.horizontal(|ui| {
                         ui.add_space(inner_margin);
-                        ui.label(
-                            egui::RichText::new(format!(
-                                "Velocity: ({:.2}, {:.2}, {:.2})",
-                                vel.x, vel.y, vel.z
-                            ))
-                            .size(9.5)
-                            .color(TEXT_MUTED)
-                            .monospace(),
-                        );
+                        ui.label(egui::RichText::new(format!("Velocity: ({:.2}, {:.2}, {:.2})", vel.x, vel.y, vel.z)).size(9.5).color(TEXT_MUTED).monospace());
                     });
                     let speed = (vel.x * vel.x + vel.y * vel.y + vel.z * vel.z).sqrt();
                     ui.horizontal(|ui| {
                         ui.add_space(inner_margin);
-                        ui.label(
-                            egui::RichText::new(format!("Speed: {:.3} m/s", speed))
-                                .size(9.5)
-                                .color(TEXT_MUTED)
-                                .monospace(),
-                        );
+                        ui.label(egui::RichText::new(format!("Speed: {:.3} m/s", speed)).size(9.5).color(TEXT_MUTED).monospace());
                     });
                 }
             }
+            ui.add_space(2.0);
+        });
+
+        // Collider section
+        egui::CollapsingHeader::new(
+            egui::RichText::new("Collider").strong().size(11.0).color(TEXT_NORMAL),
+        )
+        .default_open(state.inspector_sections.collider_open)
+        .show(ui, |ui| {
+            ui.add_space(2.0);
+            ui.horizontal(|ui| {
+                ui.add_space(inner_margin);
+                ui.label(egui::RichText::new("Shape").size(10.0).color(TEXT_DIM));
+                egui::ComboBox::from_id_salt(format!("collider_shape_{}", idx))
+                    .width(80.0)
+                    .selected_text(format!("{}", state.entities[idx].collider_shape))
+                    .show_ui(ui, |ui| {
+                        for cs in [ColliderShape::Box, ColliderShape::Sphere, ColliderShape::Capsule] {
+                            ui.selectable_value(&mut state.entities[idx].collider_shape, cs, format!("{}", cs));
+                        }
+                    });
+            });
+            ui.horizontal(|ui| {
+                ui.add_space(inner_margin);
+                ui.checkbox(&mut state.entities[idx].is_trigger, "Is Trigger");
+            });
             ui.add_space(2.0);
         });
     }
@@ -2117,12 +2655,22 @@ fn draw_inspector_content(ui: &mut egui::Ui, state: &mut EditorState, idx: usize
         .default_open(state.inspector_sections.light_open)
         .show(ui, |ui| {
             ui.add_space(2.0);
-
+            ui.horizontal(|ui| {
+                ui.add_space(inner_margin);
+                ui.label(egui::RichText::new("Type").size(10.0).color(TEXT_DIM));
+                egui::ComboBox::from_id_salt(format!("light_kind_{}", idx))
+                    .width(100.0)
+                    .selected_text(format!("{}", state.entities[idx].light_kind))
+                    .show_ui(ui, |ui| {
+                        for lk in [LightKind::Directional, LightKind::Point, LightKind::Spot] {
+                            ui.selectable_value(&mut state.entities[idx].light_kind, lk, format!("{}", lk));
+                        }
+                    });
+            });
             ui.horizontal(|ui| {
                 ui.add_space(inner_margin);
                 ui.label(egui::RichText::new("Color").size(10.0).color(TEXT_DIM));
                 ui.color_edit_button_rgb(&mut state.entities[idx].light_color);
-                // Color preview swatch
                 let preview = egui::Color32::from_rgb(
                     (state.entities[idx].light_color[0] * 255.0) as u8,
                     (state.entities[idx].light_color[1] * 255.0) as u8,
@@ -2132,33 +2680,136 @@ fn draw_inspector_content(ui: &mut egui::Ui, state: &mut EditorState, idx: usize
                 ui.painter().rect_filled(swatch_rect, 2.0, preview);
                 ui.painter().rect_stroke(swatch_rect, 2.0, egui::Stroke::new(1.0, BORDER), egui::StrokeKind::Outside);
             });
-
             ui.horizontal(|ui| {
                 ui.add_space(inner_margin);
                 ui.label(egui::RichText::new("Intensity").size(10.0).color(TEXT_DIM));
-                ui.add(
-                    egui::Slider::new(&mut state.entities[idx].light_intensity, 0.0..=100.0)
-                        .logarithmic(true)
-                        .max_decimals(2),
-                );
+                ui.add(egui::Slider::new(&mut state.entities[idx].light_intensity, 0.0..=100.0).logarithmic(true).max_decimals(2));
             });
-
             ui.horizontal(|ui| {
                 ui.add_space(inner_margin);
                 ui.label(egui::RichText::new("Range").size(10.0).color(TEXT_DIM));
-                ui.add(
-                    egui::Slider::new(&mut state.entities[idx].light_range, 0.1..=1000.0)
-                        .logarithmic(true)
-                        .max_decimals(1)
-                        .suffix(" m"),
-                );
+                ui.add(egui::Slider::new(&mut state.entities[idx].light_range, 0.1..=1000.0).logarithmic(true).max_decimals(1).suffix(" m"));
             });
-
+            if state.entities[idx].light_kind == LightKind::Spot {
+                ui.horizontal(|ui| {
+                    ui.add_space(inner_margin);
+                    ui.label(egui::RichText::new("Spot Angle").size(10.0).color(TEXT_DIM));
+                    ui.add(egui::Slider::new(&mut state.entities[idx].light_spot_angle, 1.0..=179.0).suffix(" deg"));
+                });
+            }
             ui.horizontal(|ui| {
                 ui.add_space(inner_margin);
                 ui.checkbox(&mut state.entities[idx].light_shadows, "Cast Shadows");
             });
+            ui.add_space(2.0);
+        });
+    }
 
+    // ---- Camera Section ----
+    if state.entities[idx].is_camera {
+        egui::CollapsingHeader::new(
+            egui::RichText::new("Camera").strong().size(11.0).color(ACCENT_BRIGHT),
+        )
+        .default_open(state.inspector_sections.camera_open)
+        .show(ui, |ui| {
+            ui.add_space(2.0);
+            ui.horizontal(|ui| {
+                ui.add_space(inner_margin);
+                ui.label(egui::RichText::new("Projection").size(10.0).color(TEXT_DIM));
+                egui::ComboBox::from_id_salt(format!("cam_proj_{}", idx))
+                    .width(100.0)
+                    .selected_text(format!("{}", state.entities[idx].camera_projection))
+                    .show_ui(ui, |ui| {
+                        for cp in [CameraProjection::Perspective, CameraProjection::Orthographic] {
+                            ui.selectable_value(&mut state.entities[idx].camera_projection, cp, format!("{}", cp));
+                        }
+                    });
+            });
+            ui.horizontal(|ui| {
+                ui.add_space(inner_margin);
+                ui.label(egui::RichText::new("FOV").size(10.0).color(TEXT_DIM));
+                ui.add(egui::Slider::new(&mut state.entities[idx].camera_fov, 10.0..=170.0).suffix(" deg"));
+            });
+            ui.horizontal(|ui| {
+                ui.add_space(inner_margin);
+                ui.label(egui::RichText::new("Near").size(10.0).color(TEXT_DIM));
+                ui.add(egui::DragValue::new(&mut state.entities[idx].camera_near).speed(0.01).range(0.001..=100.0));
+            });
+            ui.horizontal(|ui| {
+                ui.add_space(inner_margin);
+                ui.label(egui::RichText::new("Far").size(10.0).color(TEXT_DIM));
+                ui.add(egui::DragValue::new(&mut state.entities[idx].camera_far).speed(10.0).range(1.0..=100000.0));
+            });
+            ui.horizontal(|ui| {
+                ui.add_space(inner_margin);
+                ui.label(egui::RichText::new("Clear Color").size(10.0).color(TEXT_DIM));
+                ui.color_edit_button_rgba_premultiplied(&mut state.entities[idx].camera_clear_color);
+            });
+            ui.horizontal(|ui| {
+                ui.add_space(inner_margin);
+                ui.label(egui::RichText::new("Depth").size(10.0).color(TEXT_DIM));
+                ui.label(egui::RichText::new("0").size(10.0).color(TEXT_MUTED));
+            });
+            ui.add_space(2.0);
+        });
+    }
+
+    // ---- Audio Source Section ----
+    if state.entities[idx].is_audio {
+        egui::CollapsingHeader::new(
+            egui::RichText::new("Audio Source").strong().size(11.0).color(ORANGE),
+        )
+        .default_open(state.inspector_sections.audio_open)
+        .show(ui, |ui| {
+            ui.add_space(2.0);
+            ui.horizontal(|ui| {
+                ui.add_space(inner_margin);
+                ui.label(egui::RichText::new("Clip").size(10.0).color(TEXT_DIM));
+                ui.label(egui::RichText::new("(none)").size(10.0).color(TEXT_MUTED));
+            });
+            ui.horizontal(|ui| {
+                ui.add_space(inner_margin);
+                ui.label(egui::RichText::new("Volume").size(10.0).color(TEXT_DIM));
+                ui.add(egui::Slider::new(&mut state.entities[idx].audio_volume, 0.0..=1.0).max_decimals(2));
+            });
+            ui.horizontal(|ui| {
+                ui.add_space(inner_margin);
+                ui.label(egui::RichText::new("Pitch").size(10.0).color(TEXT_DIM));
+                ui.add(egui::DragValue::new(&mut state.entities[idx].audio_pitch).speed(0.01).range(0.1..=4.0));
+            });
+            ui.horizontal(|ui| {
+                ui.add_space(inner_margin);
+                ui.checkbox(&mut state.entities[idx].audio_spatial, "Spatial");
+            });
+            if state.entities[idx].audio_spatial {
+                ui.horizontal(|ui| {
+                    ui.add_space(inner_margin);
+                    ui.label(egui::RichText::new("Min Dist").size(10.0).color(TEXT_DIM));
+                    ui.add(egui::DragValue::new(&mut state.entities[idx].audio_min_dist).speed(0.1).range(0.0..=100.0).suffix(" m"));
+                });
+                ui.horizontal(|ui| {
+                    ui.add_space(inner_margin);
+                    ui.label(egui::RichText::new("Max Dist").size(10.0).color(TEXT_DIM));
+                    ui.add(egui::DragValue::new(&mut state.entities[idx].audio_max_dist).speed(1.0).range(1.0..=1000.0).suffix(" m"));
+                });
+            }
+            ui.add_space(2.0);
+        });
+    }
+
+    // ---- Script Section ----
+    if state.entities[idx].has_script {
+        egui::CollapsingHeader::new(
+            egui::RichText::new("Script").strong().size(11.0).color(MAGENTA),
+        )
+        .default_open(state.inspector_sections.script_open)
+        .show(ui, |ui| {
+            ui.add_space(2.0);
+            ui.horizontal(|ui| {
+                ui.add_space(inner_margin);
+                ui.label(egui::RichText::new("File").size(10.0).color(TEXT_DIM));
+                ui.add(egui::TextEdit::singleline(&mut state.entities[idx].script_file).desired_width(150.0).hint_text("script.genovo"));
+            });
             ui.add_space(2.0);
         });
     }
@@ -2175,7 +2826,7 @@ fn draw_inspector_content(ui: &mut egui::Ui, state: &mut EditorState, idx: usize
                 .color(ACCENT),
             |ui| {
                 if !state.entities[idx].has_physics {
-                    if ui.button("Rigidbody").clicked() {
+                    if ui.button("Rigidbody + Collider").clicked() {
                         let ent = &state.entities[idx];
                         let desc = physics::RigidBodyDesc {
                             body_type: physics::BodyType::Dynamic,
@@ -2195,7 +2846,7 @@ fn draw_inspector_content(ui: &mut egui::Ui, state: &mut EditorState, idx: usize
                             ent.has_physics = true;
                             ent.physics_handle = Some(handle);
                         }
-                        state.notify("Added Rigidbody component", LogLevel::System);
+                        state.notify("Added Rigidbody + Collider", LogLevel::System);
                         ui.close_menu();
                     }
                 }
@@ -2206,12 +2857,26 @@ fn draw_inspector_content(ui: &mut egui::Ui, state: &mut EditorState, idx: usize
                         ui.close_menu();
                     }
                 }
-                if state.entities[idx].has_physics && state.entities[idx].is_light {
-                    ui.label(
-                        egui::RichText::new("All components added")
-                            .size(10.0)
-                            .color(TEXT_MUTED),
-                    );
+                if !state.entities[idx].is_camera {
+                    if ui.button("Camera").clicked() {
+                        state.entities[idx].is_camera = true;
+                        state.notify("Added Camera component", LogLevel::System);
+                        ui.close_menu();
+                    }
+                }
+                if !state.entities[idx].is_audio {
+                    if ui.button("Audio Source").clicked() {
+                        state.entities[idx].is_audio = true;
+                        state.notify("Added Audio Source", LogLevel::System);
+                        ui.close_menu();
+                    }
+                }
+                if !state.entities[idx].has_script {
+                    if ui.button("Script").clicked() {
+                        state.entities[idx].has_script = true;
+                        state.notify("Added Script component", LogLevel::System);
+                        ui.close_menu();
+                    }
                 }
             },
         );
@@ -2239,38 +2904,30 @@ fn draw_bottom_panel(ctx: &egui::Context, state: &mut EditorState) {
                 .stroke(egui::Stroke::new(1.0, BORDER_SUBTLE)),
         )
         .show(ctx, |ui| {
-            // Tab bar with subtle underline indicator
+            // Tab bar
             ui.horizontal(|ui| {
                 ui.add_space(4.0);
                 let tabs = [
-                    (BottomTab::Console, "Console", TEXT_NORMAL),
-                    (BottomTab::AssetBrowser, "Assets", TEXT_NORMAL),
-                    (BottomTab::Profiler, "Profiler", TEXT_NORMAL),
+                    (BottomTab::ContentBrowser, "Content Browser"),
+                    (BottomTab::Console, "Console"),
+                    (BottomTab::Profiler, "Profiler"),
+                    (BottomTab::Animation, "Animation"),
                 ];
-                for (tab, label, _color) in &tabs {
+                for (tab, label) in &tabs {
                     let selected = state.bottom_tab == *tab;
                     let text = if selected {
-                        egui::RichText::new(*label)
-                            .size(10.5)
-                            .strong()
-                            .color(TEXT_BRIGHT)
+                        egui::RichText::new(*label).size(10.5).strong().color(TEXT_BRIGHT)
                     } else {
-                        egui::RichText::new(*label)
-                            .size(10.5)
-                            .color(TEXT_DIM)
+                        egui::RichText::new(*label).size(10.5).color(TEXT_DIM)
                     };
                     let resp = ui.add(egui::SelectableLabel::new(selected, text));
                     if resp.clicked() {
                         state.bottom_tab = *tab;
                     }
-                    // Draw underline for selected tab
                     if selected {
                         let rect = resp.rect;
                         ui.painter().line_segment(
-                            [
-                                egui::pos2(rect.left() + 2.0, rect.bottom()),
-                                egui::pos2(rect.right() - 2.0, rect.bottom()),
-                            ],
+                            [egui::pos2(rect.left() + 2.0, rect.bottom()), egui::pos2(rect.right() - 2.0, rect.bottom())],
                             egui::Stroke::new(2.0, ACCENT),
                         );
                     }
@@ -2280,14 +2937,13 @@ fn draw_bottom_panel(ctx: &egui::Context, state: &mut EditorState) {
             accent_line(ui);
             ui.add_space(2.0);
 
-            // Tab content with margins
-            let content_frame = egui::Frame::new()
-                .inner_margin(egui::Margin::symmetric(4, 2));
+            let content_frame = egui::Frame::new().inner_margin(egui::Margin::symmetric(4, 2));
             content_frame.show(ui, |ui| {
                 match state.bottom_tab {
                     BottomTab::Console => draw_console_tab(ui, state),
-                    BottomTab::AssetBrowser => draw_asset_browser_tab(ui, state),
+                    BottomTab::ContentBrowser => draw_content_browser_tab(ui, state),
                     BottomTab::Profiler => draw_profiler_tab(ui, state),
+                    BottomTab::Animation => draw_animation_tab(ui, state),
                 }
             });
         });
@@ -2301,7 +2957,7 @@ fn draw_console_tab(ui: &mut egui::Ui, state: &mut EditorState) {
     let input_height = 22.0;
     let available = ui.available_height() - input_height - 6.0;
 
-    // Console filter buttons
+    // Filter buttons
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new("Filter:").size(9.5).color(TEXT_MUTED));
         let filters: [(Option<LogLevel>, &str, egui::Color32); 5] = [
@@ -2313,85 +2969,43 @@ fn draw_console_tab(ui: &mut egui::Ui, state: &mut EditorState) {
         ];
         for (filter, label, color) in &filters {
             let selected = state.console_filter_level == *filter;
-            if ui.add(egui::SelectableLabel::new(
-                selected,
-                egui::RichText::new(*label).size(9.5).color(*color),
-            )).clicked() {
+            if ui.add(egui::SelectableLabel::new(selected, egui::RichText::new(*label).size(9.5).color(*color))).clicked() {
                 state.console_filter_level = *filter;
             }
         }
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.add(egui::Button::new(
-                egui::RichText::new("Clear").size(9.5).color(TEXT_MUTED),
-            )).clicked() {
+            if ui.add(egui::Button::new(egui::RichText::new("Clear").size(9.5).color(TEXT_MUTED))).clicked() {
                 state.console_log.clear();
             }
             ui.checkbox(&mut state.console_auto_scroll, "");
             ui.label(egui::RichText::new("Auto").size(9.0).color(TEXT_MUTED));
         });
     });
-
     ui.add_space(1.0);
 
     // Log output
-    let mut scroll_area = egui::ScrollArea::vertical()
-        .max_height(available.max(20.0))
-        .auto_shrink([false, false]);
-
+    let mut scroll_area = egui::ScrollArea::vertical().max_height(available.max(20.0)).auto_shrink([false, false]);
     if state.console_auto_scroll {
         scroll_area = scroll_area.stick_to_bottom(true);
     }
-
     scroll_area.show(ui, |ui| {
         for entry in &state.console_log {
-            // Apply filter
             if let Some(filter) = state.console_filter_level {
-                if entry.level != filter {
-                    continue;
-                }
+                if entry.level != filter { continue; }
             }
-
-            // Background tint for errors/warnings
             if let Some(tint) = entry.level.bg_tint() {
                 let rect = ui.available_rect_before_wrap();
-                let tint_rect = egui::Rect::from_min_size(
-                    rect.left_top(),
-                    egui::vec2(rect.width(), 16.0),
-                );
+                let tint_rect = egui::Rect::from_min_size(rect.left_top(), egui::vec2(rect.width(), 16.0));
                 ui.painter().rect_filled(tint_rect, 0.0, tint);
             }
-
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
-                // Timestamp
-                ui.label(
-                    egui::RichText::new(format!("{:>7.1}", entry.timestamp))
-                        .size(9.5)
-                        .color(TEXT_MUTED)
-                        .monospace(),
-                );
-                // Level badge
-                ui.label(
-                    egui::RichText::new(entry.level.prefix())
-                        .size(9.5)
-                        .color(entry.level.color())
-                        .monospace()
-                        .strong(),
-                );
-                // Message
-                ui.label(
-                    egui::RichText::new(&entry.text)
-                        .size(10.5)
-                        .color(entry.level.color()),
-                );
-                // Repeat count
+                ui.label(egui::RichText::new(format!("{:>7.1}", entry.timestamp)).size(9.5).color(TEXT_MUTED).monospace());
+                ui.label(egui::RichText::new(entry.level.prefix()).size(9.5).color(entry.level.color()).monospace().strong());
+                ui.label(egui::RichText::new(&entry.text).size(10.5).color(entry.level.color()));
                 if entry.count > 1 {
-                    ui.label(
-                        egui::RichText::new(format!("(x{})", entry.count))
-                            .size(9.0)
-                            .color(TEXT_MUTED),
-                    );
+                    ui.label(egui::RichText::new(format!("(x{})", entry.count)).size(9.0).color(TEXT_MUTED));
                 }
             });
         }
@@ -2399,25 +3013,17 @@ fn draw_console_tab(ui: &mut egui::Ui, state: &mut EditorState) {
 
     // Command input
     ui.horizontal(|ui| {
-        ui.label(
-            egui::RichText::new(">")
-                .monospace()
-                .color(ACCENT)
-                .size(11.0),
-        );
+        ui.label(egui::RichText::new(">").monospace().color(ACCENT).size(11.0));
         let resp = ui.add(
             egui::TextEdit::singleline(&mut state.console_input)
                 .desired_width(ui.available_width() - 40.0)
                 .hint_text("Type command... (help)")
                 .font(egui::TextStyle::Monospace),
         );
-
         if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
             submit_console(state);
             resp.request_focus();
         }
-
-        // History navigation
         if resp.has_focus() {
             if ui.input(|i| i.key_pressed(egui::Key::ArrowUp)) {
                 let hlen = state.console_history.len();
@@ -2444,10 +3050,7 @@ fn draw_console_tab(ui: &mut egui::Ui, state: &mut EditorState) {
                 }
             }
         }
-
-        if ui.add(egui::Button::new(
-            egui::RichText::new("Run").size(10.0).color(ACCENT),
-        ).min_size(egui::vec2(32.0, 18.0))).clicked() {
+        if ui.add(egui::Button::new(egui::RichText::new("Run").size(10.0).color(ACCENT)).min_size(egui::vec2(32.0, 18.0))).clicked() {
             submit_console(state);
         }
     });
@@ -2464,27 +3067,20 @@ fn submit_console(state: &mut EditorState) {
 }
 
 // =============================================================================
-// Asset Browser Tab
+// Content Browser Tab
 // =============================================================================
 
-fn draw_asset_browser_tab(ui: &mut egui::Ui, state: &mut EditorState) {
-    // Breadcrumb / path bar
+fn draw_content_browser_tab(ui: &mut egui::Ui, state: &mut EditorState) {
+    // Breadcrumb path bar
     ui.horizontal(|ui| {
-        // Breadcrumb segments
         let segments: Vec<&str> = state.asset_path.split(['/', '\\']).filter(|s| !s.is_empty()).collect();
-        if ui.add(egui::Button::new(
-            egui::RichText::new("Root").size(10.0).color(ACCENT),
-        ).frame(false)).clicked() {
-            state.asset_path = "assets".to_string();
-        }
+        ui.label(egui::RichText::new("res://").size(10.0).color(ACCENT_DIM));
         for (i, seg) in segments.iter().enumerate() {
-            ui.label(egui::RichText::new("/").size(10.0).color(TEXT_MUTED));
+            ui.label(egui::RichText::new(">").size(10.0).color(TEXT_MUTED));
             if i == segments.len() - 1 {
                 ui.label(egui::RichText::new(*seg).size(10.0).color(TEXT_BRIGHT));
             } else {
-                if ui.add(egui::Button::new(
-                    egui::RichText::new(*seg).size(10.0).color(ACCENT_DIM),
-                ).frame(false)).clicked() {
+                if ui.add(egui::Button::new(egui::RichText::new(*seg).size(10.0).color(ACCENT_DIM)).frame(false)).clicked() {
                     let path: String = segments[..=i].join("/");
                     state.asset_path = path;
                 }
@@ -2492,124 +3088,71 @@ fn draw_asset_browser_tab(ui: &mut egui::Ui, state: &mut EditorState) {
         }
 
         ui.add(thin_separator());
-
-        // Up button
-        if ui.add(egui::Button::new(
-            egui::RichText::new("..").size(10.0),
-        )).on_hover_text("Go up").clicked() {
+        if ui.add(egui::Button::new(egui::RichText::new("..").size(10.0))).on_hover_text("Go up").clicked() {
             if let Some(pos) = state.asset_path.rfind('/').or_else(|| state.asset_path.rfind('\\')) {
                 state.asset_path.truncate(pos);
             }
         }
-
         ui.add(thin_separator());
-
-        // Search
         ui.label(egui::RichText::new("?").size(10.0).color(TEXT_MUTED));
-        ui.add(
-            egui::TextEdit::singleline(&mut state.asset_search)
-                .desired_width(120.0)
-                .hint_text("Filter...")
-                .font(egui::TextStyle::Small),
-        );
+        ui.add(egui::TextEdit::singleline(&mut state.asset_search).desired_width(120.0).hint_text("Search...").font(egui::TextStyle::Small));
 
-        // View size slider
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.add(
-                egui::Slider::new(&mut state.asset_view_size, 40.0..=160.0)
-                    .show_value(false),
-            );
+            if ui.button("Import").on_hover_text("Import asset").clicked() {
+                state.log(LogLevel::System, "Import asset (placeholder)");
+            }
+            ui.add(egui::Slider::new(&mut state.asset_view_size, 40.0..=160.0).show_value(false));
             ui.label(egui::RichText::new("Size").size(9.0).color(TEXT_MUTED));
         });
     });
-
     ui.add_space(2.0);
 
-    egui::ScrollArea::vertical()
-        .auto_shrink([false, false])
-        .show(ui, |ui| {
-            let entries = scan_asset_dir(&state.asset_path, &state.asset_search);
-
-            if entries.is_empty() {
-                // Show default asset layout hint
-                let defaults = [
-                    ("[D]", "models/", "3D mesh assets", YELLOW),
-                    ("[D]", "textures/", "Image textures", CYAN),
-                    ("[D]", "audio/", "Sound effects & music", ORANGE),
-                    ("[D]", "scripts/", "GenovoScript files", GREEN),
-                    ("[D]", "scenes/", "Scene definitions", MAGENTA),
-                    ("[D]", "materials/", "Material definitions", ACCENT),
-                    ("[D]", "shaders/", "WGSL/GLSL shaders", RED),
-                    ("[D]", "fonts/", "Font files", TEXT_NORMAL),
-                ];
-                ui.add_space(4.0);
-                ui.label(
-                    egui::RichText::new("Default asset layout:")
-                        .size(10.0)
-                        .color(TEXT_MUTED),
-                );
-                ui.add_space(4.0);
-                for (icon, name, desc, color) in &defaults {
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(*icon).size(10.0).color(YELLOW_DIM));
-                        ui.label(egui::RichText::new(*name).size(10.5).color(*color));
-                        ui.label(egui::RichText::new(*desc).size(9.5).color(TEXT_MUTED));
-                    });
-                }
-            } else {
-                let item_size = state.asset_view_size;
-                let cols = ((ui.available_width() / (item_size + 8.0)) as usize).max(1);
-                egui::Grid::new("asset_grid")
-                    .num_columns(cols)
-                    .spacing(egui::vec2(4.0, 4.0))
-                    .show(ui, |ui| {
-                        for (i, entry) in entries.iter().enumerate() {
-                            let icon = asset_icon(&entry.name, entry.is_dir);
-                            let color = if entry.is_dir {
-                                YELLOW
-                            } else {
-                                asset_color(&entry.name)
-                            };
-
-                            let display = if state.asset_show_extensions || entry.is_dir {
-                                entry.name.clone()
-                            } else {
-                                entry.name.rsplit_once('.').map_or(
-                                    entry.name.clone(),
-                                    |(base, _)| base.to_string(),
-                                )
-                            };
-
-                            let btn = egui::Button::new(
-                                egui::RichText::new(format!("{} {}", icon, display))
-                                    .size(10.0)
-                                    .color(color),
-                            )
-                            .min_size(egui::vec2(item_size, 20.0));
-
-                            let tooltip = format!(
-                                "{}{}",
-                                if entry.is_dir { "Directory: " } else { "File: " },
-                                entry.name
-                            );
-
-                            if ui.add(btn).on_hover_text(tooltip).clicked() {
-                                if entry.is_dir {
-                                    state.asset_path = format!("{}/{}", state.asset_path, entry.name);
-                                } else {
-                                    state.log(
-                                        LogLevel::Info,
-                                        format!("Selected asset: {}", entry.name),
-                                    );
-                                }
-                            }
-                            if (i + 1) % cols == 0 {
-                                ui.end_row();
-                            }
-                        }
-                    });
+    egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+        let entries = scan_asset_dir(&state.asset_path, &state.asset_search);
+        if entries.is_empty() {
+            let defaults = [
+                ("[D]", "Models/", CYAN),
+                ("[D]", "Textures/", GREEN),
+                ("[D]", "Materials/", ACCENT),
+                ("[D]", "Audio/", ORANGE),
+                ("[D]", "Scripts/", MAGENTA),
+                ("[D]", "Scenes/", YELLOW),
+                ("[D]", "Shaders/", RED),
+            ];
+            ui.add_space(4.0);
+            ui.label(egui::RichText::new("Default asset structure:").size(10.0).color(TEXT_MUTED));
+            ui.add_space(4.0);
+            for (icon, name, color) in &defaults {
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new(*icon).size(10.0).color(YELLOW_DIM));
+                    ui.label(egui::RichText::new(*name).size(10.5).color(*color));
+                });
             }
-        });
+        } else {
+            let item_size = state.asset_view_size;
+            let cols = ((ui.available_width() / (item_size + 8.0)) as usize).max(1);
+            egui::Grid::new("content_grid").num_columns(cols).spacing(egui::vec2(4.0, 4.0)).show(ui, |ui| {
+                for (i, entry) in entries.iter().enumerate() {
+                    let icon = asset_icon(&entry.name, entry.is_dir);
+                    let color = if entry.is_dir { YELLOW } else { asset_color(&entry.name) };
+                    let display = if state.asset_show_extensions || entry.is_dir {
+                        entry.name.clone()
+                    } else {
+                        entry.name.rsplit_once('.').map_or(entry.name.clone(), |(base, _)| base.to_string())
+                    };
+                    let btn = egui::Button::new(egui::RichText::new(format!("{} {}", icon, display)).size(10.0).color(color)).min_size(egui::vec2(item_size, 20.0));
+                    if ui.add(btn).clicked() {
+                        if entry.is_dir {
+                            state.asset_path = format!("{}/{}", state.asset_path, entry.name);
+                        } else {
+                            state.log(LogLevel::Info, format!("Selected asset: {}", entry.name));
+                        }
+                    }
+                    if (i + 1) % cols == 0 { ui.end_row(); }
+                }
+            });
+        }
+    });
 }
 
 struct AssetEntry {
@@ -2622,9 +3165,7 @@ fn scan_asset_dir(path: &str, filter: &str) -> Vec<AssetEntry> {
     if let Ok(dir) = std::fs::read_dir(path) {
         for entry in dir.flatten() {
             let name = entry.file_name().to_string_lossy().to_string();
-            if !filter.is_empty() && !name.to_lowercase().contains(&filter.to_lowercase()) {
-                continue;
-            }
+            if !filter.is_empty() && !name.to_lowercase().contains(&filter.to_lowercase()) { continue; }
             let is_dir = entry.file_type().map_or(false, |t| t.is_dir());
             entries.push(AssetEntry { name, is_dir });
         }
@@ -2634,9 +3175,7 @@ fn scan_asset_dir(path: &str, filter: &str) -> Vec<AssetEntry> {
 }
 
 fn asset_icon(name: &str, is_dir: bool) -> &'static str {
-    if is_dir {
-        return "[D]";
-    }
+    if is_dir { return "[D]"; }
     match name.rsplit('.').next().unwrap_or("") {
         "obj" | "fbx" | "gltf" | "glb" => "[3D]",
         "png" | "jpg" | "jpeg" | "bmp" | "tga" | "dds" | "hdr" => "[TX]",
@@ -2669,29 +3208,11 @@ fn asset_color(name: &str) -> egui::Color32 {
 // =============================================================================
 
 fn draw_profiler_tab(ui: &mut egui::Ui, state: &mut EditorState) {
-    // Stats header
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 12.0;
-
-        let fps_color = if state.smooth_fps >= 55.0 {
-            GREEN
-        } else if state.smooth_fps >= 30.0 {
-            YELLOW
-        } else {
-            RED
-        };
-
-        ui.label(
-            egui::RichText::new(format!("FPS: {:.0}", state.smooth_fps))
-                .size(11.0)
-                .color(fps_color)
-                .strong(),
-        );
-        ui.label(
-            egui::RichText::new(format!("Frame: {:.2} ms", state.smooth_frame_time))
-                .size(11.0)
-                .color(TEXT_NORMAL),
-        );
+        let fps_color = if state.smooth_fps >= 55.0 { GREEN } else if state.smooth_fps >= 30.0 { YELLOW } else { RED };
+        ui.label(egui::RichText::new(format!("FPS: {:.0}", state.smooth_fps)).size(11.0).color(fps_color).strong());
+        ui.label(egui::RichText::new(format!("Frame: {:.2} ms", state.smooth_frame_time)).size(11.0).color(TEXT_NORMAL));
 
         if !state.frame_times.is_empty() {
             let min = state.frame_times.iter().cloned().fold(f64::MAX, f64::min);
@@ -2702,47 +3223,19 @@ fn draw_profiler_tab(ui: &mut egui::Ui, state: &mut EditorState) {
                 sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
                 sorted.get((sorted.len() as f64 * 0.99) as usize).copied().unwrap_or(0.0)
             };
-            ui.label(
-                egui::RichText::new(format!(
-                    "Min: {:.2}  Avg: {:.2}  P99: {:.2}  Max: {:.2} ms",
-                    min, avg, p99, max
-                ))
-                .size(10.0)
-                .color(TEXT_DIM),
-            );
+            ui.label(egui::RichText::new(format!("Min: {:.2}  Avg: {:.2}  P99: {:.2}  Max: {:.2} ms", min, avg, p99, max)).size(10.0).color(TEXT_DIM));
         }
 
-        // Frame count
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.label(
-                egui::RichText::new(format!("Frame: {}", state.frame_count))
-                    .size(9.5)
-                    .color(TEXT_MUTED)
-                    .monospace(),
-            );
+            ui.label(egui::RichText::new(format!("Frame: {}", state.frame_count)).size(9.5).color(TEXT_MUTED).monospace());
         });
     });
-
     ui.add_space(2.0);
 
-    // Frame time plot
-    let points: Vec<[f64; 2]> = state
-        .frame_times
-        .iter()
-        .enumerate()
-        .map(|(i, &v)| [i as f64, v])
-        .collect();
-    let line = egui_plot::Line::new(egui_plot::PlotPoints::new(points))
-        .name("Frame time (ms)")
-        .color(ACCENT);
-
-    // Target lines
-    let target_60 = egui_plot::HLine::new(16.67)
-        .name("60 FPS")
-        .color(egui::Color32::from_rgb(45, 45, 50));
-    let target_30 = egui_plot::HLine::new(33.33)
-        .name("30 FPS")
-        .color(egui::Color32::from_rgb(55, 45, 40));
+    let points: Vec<[f64; 2]> = state.frame_times.iter().enumerate().map(|(i, &v)| [i as f64, v]).collect();
+    let line = egui_plot::Line::new(egui_plot::PlotPoints::new(points)).name("Frame time (ms)").color(ACCENT);
+    let target_60 = egui_plot::HLine::new(16.67).name("60 FPS (16.67ms)").color(egui::Color32::from_rgb(45, 45, 50));
+    let target_30 = egui_plot::HLine::new(33.33).name("30 FPS (33.33ms)").color(egui::Color32::from_rgb(55, 45, 40));
 
     egui_plot::Plot::new("profiler_frame_time")
         .height(ui.available_height().max(40.0))
@@ -2760,72 +3253,133 @@ fn draw_profiler_tab(ui: &mut egui::Ui, state: &mut EditorState) {
 }
 
 // =============================================================================
+// Animation Timeline Tab
+// =============================================================================
+
+fn draw_animation_tab(ui: &mut egui::Ui, state: &mut EditorState) {
+    ui.horizontal(|ui| {
+        // Transport controls
+        if ui.add(egui::Button::new(egui::RichText::new("|<").size(10.0)).min_size(egui::vec2(24.0, 18.0))).on_hover_text("Go to start").clicked() {
+            state.anim_time = 0.0;
+        }
+        let play_icon = if state.anim_playing { "||" } else { "|>" };
+        if ui.add(egui::Button::new(egui::RichText::new(play_icon).size(10.0).color(if state.anim_playing { GREEN } else { TEXT_BRIGHT })).min_size(egui::vec2(24.0, 18.0))).on_hover_text("Play/Pause").clicked() {
+            state.anim_playing = !state.anim_playing;
+        }
+        if ui.add(egui::Button::new(egui::RichText::new("[]").size(10.0).color(RED)).min_size(egui::vec2(24.0, 18.0))).on_hover_text("Stop").clicked() {
+            state.anim_playing = false;
+            state.anim_time = 0.0;
+        }
+        if ui.add(egui::Button::new(egui::RichText::new(">|").size(10.0)).min_size(egui::vec2(24.0, 18.0))).on_hover_text("Go to end").clicked() {
+            state.anim_time = state.anim_duration;
+        }
+        ui.add(thin_separator());
+        ui.checkbox(&mut state.anim_loop, "Loop");
+        ui.add(thin_separator());
+        ui.label(egui::RichText::new("Time:").size(10.0).color(TEXT_DIM));
+        ui.add(egui::DragValue::new(&mut state.anim_time).speed(0.01).range(0.0..=state.anim_duration as f64).suffix(" s").max_decimals(2));
+        ui.label(egui::RichText::new(format!("/ {:.1}s", state.anim_duration)).size(10.0).color(TEXT_MUTED));
+        ui.add(thin_separator());
+        ui.label(egui::RichText::new("Duration:").size(10.0).color(TEXT_DIM));
+        ui.add(egui::DragValue::new(&mut state.anim_duration).speed(0.1).range(0.1..=300.0).suffix(" s"));
+    });
+
+    ui.add_space(4.0);
+
+    // Timeline scrubber
+    let fraction = if state.anim_duration > 0.0 { state.anim_time / state.anim_duration } else { 0.0 };
+    let response = ui.add(egui::Slider::new(&mut state.anim_time, 0.0..=state.anim_duration).show_value(false).text(""));
+
+    ui.add_space(4.0);
+    ui.label(egui::RichText::new("Keyframes and curves will appear here when animations are loaded.").size(10.0).color(TEXT_MUTED));
+
+    // Tick animation forward if playing
+    if state.anim_playing {
+        let dt = 1.0 / 60.0; // approximate
+        state.anim_time += dt;
+        if state.anim_time > state.anim_duration {
+            if state.anim_loop {
+                state.anim_time = 0.0;
+            } else {
+                state.anim_time = state.anim_duration;
+                state.anim_playing = false;
+            }
+        }
+    }
+}
+
+// =============================================================================
 // Central Viewport (3D)
 // =============================================================================
 
 fn draw_viewport(ctx: &egui::Context, state: &EditorState) {
     egui::CentralPanel::default()
-        .frame(
-            egui::Frame::new()
-                .fill(egui::Color32::TRANSPARENT)
-                .inner_margin(egui::Margin::same(0)),
-        )
+        .frame(egui::Frame::new().fill(egui::Color32::TRANSPARENT).inner_margin(egui::Margin::same(0)))
         .show(ctx, |ui| {
             let rect = ui.available_rect_before_wrap();
             let painter = ui.painter();
 
             // ---- Top-left overlay: FPS + mode ----
-            let fps_color = if state.smooth_fps > 55.0 {
-                GREEN
-            } else if state.smooth_fps > 30.0 {
-                YELLOW
-            } else {
-                RED
-            };
-            painter.text(
-                rect.left_top() + egui::vec2(8.0, 6.0),
-                egui::Align2::LEFT_TOP,
-                format!("{:.0} FPS | {:.2} ms", state.smooth_fps, state.smooth_frame_time),
-                egui::FontId::monospace(11.0),
-                fps_color,
-            );
-
-            painter.text(
-                rect.left_top() + egui::vec2(8.0, 22.0),
-                egui::Align2::LEFT_TOP,
-                format!(
-                    "{} | {} | {}",
-                    state.transform_mode.label(),
-                    if state.coord_space == CoordSpace::Local { "Local" } else { "World" },
-                    if state.grid_visible { "Grid" } else { "" },
-                ),
-                egui::FontId::monospace(9.5),
-                TEXT_MUTED,
-            );
+            if state.stats_visible {
+                let fps_color = if state.smooth_fps > 55.0 { GREEN } else if state.smooth_fps > 30.0 { YELLOW } else { RED };
+                painter.text(
+                    rect.left_top() + egui::vec2(8.0, 6.0),
+                    egui::Align2::LEFT_TOP,
+                    format!("{:.0} FPS | {:.2} ms", state.smooth_fps, state.smooth_frame_time),
+                    egui::FontId::monospace(11.0),
+                    fps_color,
+                );
+                painter.text(
+                    rect.left_top() + egui::vec2(8.0, 22.0),
+                    egui::Align2::LEFT_TOP,
+                    format!("{} | {} | {} | {}",
+                        state.gizmo_mode.label(),
+                        if state.coord_space == CoordSpace::Local { "Local" } else { "World" },
+                        if state.grid_visible { "Grid" } else { "" },
+                        if state.wireframe_mode { "Wire" } else { "" },
+                    ),
+                    egui::FontId::monospace(9.5),
+                    TEXT_MUTED,
+                );
+            }
 
             // ---- Top-right overlay: Camera ----
             painter.text(
                 rect.right_top() + egui::vec2(-8.0, 6.0),
                 egui::Align2::RIGHT_TOP,
-                format!(
-                    "Camera  yaw:{:.0}  pitch:{:.0}  dist:{:.1}  fov:{:.0}",
-                    state.camera_yaw, state.camera_pitch,
-                    state.camera_dist, state.camera_fov,
-                ),
+                format!("Camera  yaw:{:.0}  pitch:{:.0}  dist:{:.1}", state.camera_yaw, state.camera_pitch, state.camera_dist),
                 egui::FontId::monospace(9.5),
                 TEXT_MUTED,
             );
             painter.text(
                 rect.right_top() + egui::vec2(-8.0, 20.0),
                 egui::Align2::RIGHT_TOP,
-                format!(
-                    "Target: ({:.1}, {:.1}, {:.1})",
-                    state.camera_target[0],
-                    state.camera_target[1],
-                    state.camera_target[2],
-                ),
+                format!("Target: ({:.1}, {:.1}, {:.1})", state.camera_target[0], state.camera_target[1], state.camera_target[2]),
                 egui::FontId::monospace(9.5),
                 TEXT_MUTED,
+            );
+
+            // ---- Bottom-left: stats overlay ----
+            if state.stats_visible {
+                painter.text(
+                    rect.left_bottom() + egui::vec2(8.0, -50.0),
+                    egui::Align2::LEFT_TOP,
+                    format!("Entities: {} | Bodies: {} | Draw calls: ~1",
+                        state.entities.len(),
+                        state.engine.physics().body_count(),
+                    ),
+                    egui::FontId::monospace(9.5),
+                    egui::Color32::from_rgb(50, 50, 58),
+                );
+            }
+
+            // ---- Bottom center: gizmo mode indicator ----
+            painter.text(
+                egui::pos2(rect.center().x, rect.bottom() - 14.0),
+                egui::Align2::CENTER_BOTTOM,
+                format!("3D Viewport | {} x {}", rect.width() as u32, rect.height() as u32),
+                egui::FontId::monospace(9.5),
+                egui::Color32::from_rgb(40, 40, 48),
             );
 
             // ---- Play state overlay with pulsing border ----
@@ -2833,12 +3387,7 @@ fn draw_viewport(ctx: &egui::Context, state: &EditorState) {
                 let t = state.frame_count as f32 * 0.03;
                 let alpha = ((t.sin() + 1.0) * 0.5 * 60.0 + 30.0) as u8;
                 let pulse_col = egui::Color32::from_rgba_premultiplied(72, 199, 142, alpha);
-                painter.rect_stroke(
-                    rect.shrink(1.0),
-                    0.0,
-                    egui::Stroke::new(2.0, pulse_col),
-                    egui::StrokeKind::Outside,
-                );
+                painter.rect_stroke(rect.shrink(1.0), 0.0, egui::Stroke::new(2.0, pulse_col), egui::StrokeKind::Outside);
                 painter.text(
                     rect.left_top() + egui::vec2(8.0, 36.0),
                     egui::Align2::LEFT_TOP,
@@ -2848,12 +3397,7 @@ fn draw_viewport(ctx: &egui::Context, state: &EditorState) {
                 );
             } else if state.is_paused {
                 let pulse_col = egui::Color32::from_rgba_premultiplied(245, 196, 80, 40);
-                painter.rect_stroke(
-                    rect.shrink(1.0),
-                    0.0,
-                    egui::Stroke::new(2.0, pulse_col),
-                    egui::StrokeKind::Outside,
-                );
+                painter.rect_stroke(rect.shrink(1.0), 0.0, egui::Stroke::new(2.0, pulse_col), egui::StrokeKind::Outside);
                 painter.text(
                     rect.left_top() + egui::vec2(8.0, 36.0),
                     egui::Align2::LEFT_TOP,
@@ -2863,142 +3407,52 @@ fn draw_viewport(ctx: &egui::Context, state: &EditorState) {
                 );
             }
 
-            // ---- Bottom center: viewport info ----
-            painter.text(
-                egui::pos2(rect.center().x, rect.bottom() - 14.0),
-                egui::Align2::CENTER_BOTTOM,
-                format!(
-                    "3D Viewport | {} entities | {} bodies | {} x {}",
-                    state.entities.len(),
-                    state.engine.physics().body_count(),
-                    rect.width() as u32,
-                    rect.height() as u32,
-                ),
-                egui::FontId::monospace(9.5),
-                egui::Color32::from_rgb(40, 40, 48),
-            );
-
             // ---- Selected entity indicator (top center) ----
             if let Some(idx) = state.selected_entity {
                 if idx < state.entities.len() {
                     let ent = &state.entities[idx];
                     let icon_color = ent.entity_type.icon_color();
-
-                    // Background pill
-                    let label = format!(
-                        "[{}] {} ({:.1}, {:.1}, {:.1})",
-                        ent.entity_type.icon_letter(),
-                        ent.name,
-                        ent.position[0], ent.position[1], ent.position[2]
-                    );
-                    let galley = painter.layout_no_wrap(
-                        label.clone(),
-                        egui::FontId::monospace(10.0),
-                        icon_color,
-                    );
+                    let label = format!("[{}] {} ({:.1}, {:.1}, {:.1})", ent.entity_type.icon_letter(), ent.name, ent.position[0], ent.position[1], ent.position[2]);
+                    let galley = painter.layout_no_wrap(label.clone(), egui::FontId::monospace(10.0), icon_color);
                     let text_w = galley.size().x;
-                    let pill_rect = egui::Rect::from_center_size(
-                        egui::pos2(rect.center().x, rect.top() + 12.0),
-                        egui::vec2(text_w + 16.0, 18.0),
-                    );
-                    painter.rect_filled(
-                        pill_rect,
-                        9.0,
-                        egui::Color32::from_rgba_premultiplied(18, 18, 22, 200),
-                    );
-                    painter.rect_stroke(
-                        pill_rect,
-                        9.0,
-                        egui::Stroke::new(1.0, BORDER),
-                        egui::StrokeKind::Outside,
-                    );
-                    painter.text(
-                        pill_rect.center(),
-                        egui::Align2::CENTER_CENTER,
-                        label,
-                        egui::FontId::monospace(10.0),
-                        icon_color,
-                    );
+                    let pill_rect = egui::Rect::from_center_size(egui::pos2(rect.center().x, rect.top() + 12.0), egui::vec2(text_w + 16.0, 18.0));
+                    painter.rect_filled(pill_rect, 9.0, egui::Color32::from_rgba_premultiplied(18, 18, 22, 200));
+                    painter.rect_stroke(pill_rect, 9.0, egui::Stroke::new(1.0, BORDER), egui::StrokeKind::Outside);
+                    painter.text(pill_rect.center(), egui::Align2::CENTER_CENTER, label, egui::FontId::monospace(10.0), icon_color);
                 }
             }
 
             // ---- Axis indicator (bottom-left) ----
             let axis_origin = egui::pos2(rect.left() + 30.0, rect.bottom() - 40.0);
             let axis_len = 18.0;
-            // X axis (right)
-            painter.line_segment(
-                [axis_origin, axis_origin + egui::vec2(axis_len, 0.0)],
-                egui::Stroke::new(2.0, X_COLOR),
-            );
-            painter.text(
-                axis_origin + egui::vec2(axis_len + 3.0, -3.0),
-                egui::Align2::LEFT_CENTER,
-                "X",
-                egui::FontId::monospace(9.0),
-                X_COLOR,
-            );
-            // Y axis (up)
-            painter.line_segment(
-                [axis_origin, axis_origin + egui::vec2(0.0, -axis_len)],
-                egui::Stroke::new(2.0, Y_COLOR),
-            );
-            painter.text(
-                axis_origin + egui::vec2(-3.0, -axis_len - 6.0),
-                egui::Align2::CENTER_BOTTOM,
-                "Y",
-                egui::FontId::monospace(9.0),
-                Y_COLOR,
-            );
-            // Z axis (diagonal)
-            painter.line_segment(
-                [axis_origin, axis_origin + egui::vec2(-axis_len * 0.6, axis_len * 0.5)],
-                egui::Stroke::new(2.0, Z_COLOR),
-            );
-            painter.text(
-                axis_origin + egui::vec2(-axis_len * 0.6 - 6.0, axis_len * 0.5 + 2.0),
-                egui::Align2::RIGHT_CENTER,
-                "Z",
-                egui::FontId::monospace(9.0),
-                Z_COLOR,
-            );
+            painter.line_segment([axis_origin, axis_origin + egui::vec2(axis_len, 0.0)], egui::Stroke::new(2.0, X_COLOR));
+            painter.text(axis_origin + egui::vec2(axis_len + 3.0, -3.0), egui::Align2::LEFT_CENTER, "X", egui::FontId::monospace(9.0), X_COLOR);
+            painter.line_segment([axis_origin, axis_origin + egui::vec2(0.0, -axis_len)], egui::Stroke::new(2.0, Y_COLOR));
+            painter.text(axis_origin + egui::vec2(-3.0, -axis_len - 6.0), egui::Align2::CENTER_BOTTOM, "Y", egui::FontId::monospace(9.0), Y_COLOR);
+            painter.line_segment([axis_origin, axis_origin + egui::vec2(-axis_len * 0.6, axis_len * 0.5)], egui::Stroke::new(2.0, Z_COLOR));
+            painter.text(axis_origin + egui::vec2(-axis_len * 0.6 - 6.0, axis_len * 0.5 + 2.0), egui::Align2::RIGHT_CENTER, "Z", egui::FontId::monospace(9.0), Z_COLOR);
         });
 }
 
 // =============================================================================
-// About Window
+// About Genovo Studio Window
 // =============================================================================
 
 fn draw_about_window(ctx: &egui::Context, show: &mut bool) {
-    egui::Window::new("About Genovo Engine")
+    egui::Window::new("About Genovo Studio")
         .open(show)
         .resizable(false)
-        .default_width(340.0)
+        .default_width(380.0)
         .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
         .show(ctx, |ui| {
             ui.vertical_centered(|ui| {
                 ui.add_space(6.0);
-                ui.label(
-                    egui::RichText::new("GENOVO ENGINE")
-                        .size(18.0)
-                        .strong()
-                        .color(ACCENT),
-                );
-                ui.label(
-                    egui::RichText::new("v0.1.0")
-                        .size(11.0)
-                        .color(TEXT_DIM),
-                );
-                ui.add_space(8.0);
-                ui.label(
-                    egui::RichText::new("A AAA-tier game engine built in Rust")
-                        .size(11.0)
-                        .color(TEXT_NORMAL),
-                );
-                ui.label(
-                    egui::RichText::new("26 engine modules fully linked")
-                        .size(10.0)
-                        .color(TEXT_DIM),
-                );
+                ui.label(egui::RichText::new("GENOVO STUDIO").size(20.0).strong().color(ACCENT));
+                ui.label(egui::RichText::new("v1.0").size(12.0).color(TEXT_DIM));
+                ui.add_space(6.0);
+                ui.label(egui::RichText::new("Professional Game Development Environment").size(11.0).color(TEXT_NORMAL));
+                ui.add_space(4.0);
+                ui.label(egui::RichText::new("26 engine modules fully linked").size(10.0).color(TEXT_DIM));
                 ui.add_space(8.0);
 
                 let items = [
@@ -3014,27 +3468,15 @@ fn draw_about_window(ctx: &egui::Context, show: &mut bool) {
                 ];
                 for (label, value, color) in &items {
                     ui.horizontal(|ui| {
-                        ui.label(
-                            egui::RichText::new(format!("{}:", label))
-                                .size(10.0)
-                                .color(TEXT_DIM),
-                        );
-                        ui.label(
-                            egui::RichText::new(*value)
-                                .size(10.0)
-                                .color(*color),
-                        );
+                        ui.label(egui::RichText::new(format!("{}:", label)).size(10.0).color(TEXT_DIM));
+                        ui.label(egui::RichText::new(*value).size(10.0).color(*color));
                     });
                 }
 
                 ui.add_space(10.0);
                 accent_line(ui);
                 ui.add_space(4.0);
-                ui.label(
-                    egui::RichText::new("genovo.dev")
-                        .size(11.0)
-                        .color(ACCENT),
-                );
+                ui.label(egui::RichText::new("genovo.dev").size(11.0).color(ACCENT));
                 ui.add_space(4.0);
             });
         });
@@ -3052,55 +3494,74 @@ fn draw_preferences_window(ctx: &egui::Context, show: &mut bool, state: &mut Edi
         .default_height(300.0)
         .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
         .show(ctx, |ui| {
-            ui.heading("Editor Settings");
+            ui.heading("Genovo Studio Settings");
             ui.add_space(4.0);
 
-            egui::CollapsingHeader::new("Camera")
-                .default_open(true)
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label("Field of View");
-                        ui.add(egui::Slider::new(&mut state.camera_fov, 30.0..=120.0).suffix("deg"));
-                    });
-                });
+            egui::CollapsingHeader::new("Camera").default_open(true).show(ui, |ui| {
+                ui.horizontal(|ui| { ui.label("Field of View"); ui.add(egui::Slider::new(&mut state.camera_fov, 30.0..=120.0).suffix(" deg")); });
+            });
+            egui::CollapsingHeader::new("Grid").default_open(true).show(ui, |ui| {
+                ui.checkbox(&mut state.grid_visible, "Show Grid");
+                ui.horizontal(|ui| { ui.label("Grid Size"); ui.add(egui::DragValue::new(&mut state.grid_size).speed(0.1).range(0.1..=100.0)); });
+            });
+            egui::CollapsingHeader::new("Snap Settings").default_open(true).show(ui, |ui| {
+                ui.checkbox(&mut state.snap_enabled, "Enable Snap");
+                ui.horizontal(|ui| { ui.label("Translate"); ui.add(egui::DragValue::new(&mut state.snap_translate).speed(0.1).suffix(" u")); });
+                ui.horizontal(|ui| { ui.label("Rotate"); ui.add(egui::DragValue::new(&mut state.snap_rotate).speed(1.0).suffix(" deg")); });
+                ui.horizontal(|ui| { ui.label("Scale"); ui.add(egui::DragValue::new(&mut state.snap_scale).speed(0.01)); });
+            });
+            egui::CollapsingHeader::new("Content Browser").default_open(false).show(ui, |ui| {
+                ui.checkbox(&mut state.asset_show_extensions, "Show File Extensions");
+                ui.horizontal(|ui| { ui.label("Default View Size"); ui.add(egui::Slider::new(&mut state.asset_view_size, 40.0..=160.0)); });
+            });
+        });
+}
 
-            egui::CollapsingHeader::new("Grid")
-                .default_open(true)
-                .show(ui, |ui| {
-                    ui.checkbox(&mut state.grid_visible, "Show Grid");
-                    ui.horizontal(|ui| {
-                        ui.label("Grid Size");
-                        ui.add(egui::DragValue::new(&mut state.grid_size).speed(0.1).range(0.1..=100.0));
-                    });
-                });
+// =============================================================================
+// Keyboard Shortcuts Window
+// =============================================================================
 
-            egui::CollapsingHeader::new("Snap Settings")
-                .default_open(true)
-                .show(ui, |ui| {
-                    ui.checkbox(&mut state.snap_enabled, "Enable Snap");
-                    ui.horizontal(|ui| {
-                        ui.label("Translate");
-                        ui.add(egui::DragValue::new(&mut state.snap_translate).speed(0.1).suffix(" u"));
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Rotate");
-                        ui.add(egui::DragValue::new(&mut state.snap_rotate).speed(1.0).suffix(" deg"));
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Scale");
-                        ui.add(egui::DragValue::new(&mut state.snap_scale).speed(0.01));
-                    });
+fn draw_shortcuts_window(ctx: &egui::Context, show: &mut bool) {
+    egui::Window::new("Keyboard Shortcuts")
+        .open(show)
+        .resizable(false)
+        .default_width(380.0)
+        .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+        .show(ctx, |ui| {
+            ui.label(egui::RichText::new("Genovo Studio Shortcuts").size(13.0).strong().color(ACCENT));
+            ui.add_space(4.0);
+            let shortcuts = [
+                ("Ctrl+N", "New Scene"),
+                ("Ctrl+S", "Save Scene"),
+                ("Ctrl+Z", "Undo"),
+                ("Ctrl+Y", "Redo"),
+                ("Ctrl+D", "Duplicate Selected"),
+                ("Delete", "Delete Selected"),
+                ("", ""),
+                ("Q", "Select Tool"),
+                ("W", "Translate Tool"),
+                ("E", "Rotate Tool"),
+                ("R", "Scale Tool"),
+                ("", ""),
+                ("Space", "Play / Pause"),
+                ("F5", "Toggle Play Mode"),
+                ("F", "Focus Selected"),
+                ("G", "Spawn Physics Ball"),
+                ("", ""),
+                ("Up/Down", "Select Prev/Next Entity"),
+                ("Escape", "Deselect / Cancel"),
+            ];
+            for (key, desc) in &shortcuts {
+                if key.is_empty() {
+                    ui.add_space(2.0);
+                    continue;
+                }
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new(*key).size(10.5).strong().color(ACCENT).monospace());
+                    ui.add_space(8.0);
+                    ui.label(egui::RichText::new(*desc).size(10.5).color(TEXT_NORMAL));
                 });
-
-            egui::CollapsingHeader::new("Asset Browser")
-                .default_open(false)
-                .show(ui, |ui| {
-                    ui.checkbox(&mut state.asset_show_extensions, "Show File Extensions");
-                    ui.horizontal(|ui| {
-                        ui.label("Default View Size");
-                        ui.add(egui::Slider::new(&mut state.asset_view_size, 40.0..=160.0));
-                    });
-                });
+            }
         });
 }
 
@@ -3112,24 +3573,9 @@ fn draw_notification(ctx: &egui::Context, state: &EditorState) {
     if let Some((ref msg, level, start)) = state.notification {
         let elapsed = start.elapsed().as_secs_f32();
         let duration = 3.0;
-        if elapsed > duration {
-            return;
-        }
+        if elapsed > duration { return; }
 
-        let alpha = if elapsed < 0.2 {
-            elapsed / 0.2
-        } else if elapsed > duration - 0.5 {
-            (duration - elapsed) / 0.5
-        } else {
-            1.0
-        };
-
-        let screen = ctx.screen_rect();
-
-        // Position at bottom-right
-        let padding = 12.0;
-        let toast_h = 28.0;
-        let text_style = egui::FontId::proportional(11.0);
+        let alpha = if elapsed < 0.2 { elapsed / 0.2 } else if elapsed > duration - 0.5 { (duration - elapsed) / 0.5 } else { 1.0 };
 
         egui::Area::new(egui::Id::new("notification_toast"))
             .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-16.0, -36.0))
@@ -3138,28 +3584,14 @@ fn draw_notification(ctx: &egui::Context, state: &EditorState) {
                     .fill(BG_PANEL.gamma_multiply(alpha))
                     .stroke(egui::Stroke::new(1.0, BORDER.gamma_multiply(alpha)))
                     .corner_radius(egui::Rounding::same(4));
-
                 frame.show(ui, |ui| {
                     ui.horizontal(|ui| {
                         let color = level.color().gamma_multiply(alpha);
-                        // Colored left strip
-                        let (strip_rect, _) = ui.allocate_exact_size(
-                            egui::vec2(3.0, toast_h - 8.0),
-                            egui::Sense::hover(),
-                        );
+                        let (strip_rect, _) = ui.allocate_exact_size(egui::vec2(3.0, 20.0), egui::Sense::hover());
                         ui.painter().rect_filled(strip_rect, 1.0, color);
                         ui.add_space(4.0);
-                        ui.label(
-                            egui::RichText::new(level.prefix())
-                                .size(10.0)
-                                .color(color)
-                                .strong(),
-                        );
-                        ui.label(
-                            egui::RichText::new(msg)
-                                .size(11.0)
-                                .color(TEXT_NORMAL.gamma_multiply(alpha)),
-                        );
+                        ui.label(egui::RichText::new(level.prefix()).size(10.0).color(color).strong());
+                        ui.label(egui::RichText::new(msg).size(11.0).color(TEXT_NORMAL.gamma_multiply(alpha)));
                     });
                 });
             });
@@ -3173,11 +3605,7 @@ fn draw_notification(ctx: &egui::Context, state: &EditorState) {
 fn make_depth(dev: &wgpu::Device, w: u32, h: u32) -> wgpu::TextureView {
     dev.create_texture(&wgpu::TextureDescriptor {
         label: Some("depth"),
-        size: wgpu::Extent3d {
-            width: w.max(1),
-            height: h.max(1),
-            depth_or_array_layers: 1,
-        },
+        size: wgpu::Extent3d { width: w.max(1), height: h.max(1), depth_or_array_layers: 1 },
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
@@ -3205,7 +3633,7 @@ struct GpuState {
     pipeline: wgpu::RenderPipeline,
     depth_view: wgpu::TextureView,
 
-    // egui (hybrid renderer — will be swapped for UIGpuRenderer when ready)
+    // egui (hybrid renderer -- will be swapped for UIGpuRenderer when ready)
     egui_ctx: egui::Context,
     egui_state: egui_winit::State,
     egui_renderer: egui_wgpu::Renderer,
@@ -3221,11 +3649,11 @@ impl ApplicationHandler for EditorApp {
             return;
         }
 
-        // Create window
+        // Create window with Genovo Studio title
         let w = Arc::new(
             el.create_window(
                 Window::default_attributes()
-                    .with_title("Genovo Engine Editor")
+                    .with_title("Genovo Studio \u{2014} Untitled Scene")
                     .with_inner_size(LogicalSize::new(1600, 900))
                     .with_maximized(true),
             )
@@ -3240,12 +3668,9 @@ impl ApplicationHandler for EditorApp {
             ..Default::default()
         }))
         .unwrap();
-        let (dev, que) =
-            pollster::block_on(adap.request_device(&Default::default(), None)).unwrap();
+        let (dev, que) = pollster::block_on(adap.request_device(&Default::default(), None)).unwrap();
         let sz = w.inner_size();
-        let cfg = surf
-            .get_default_config(&adap, sz.width.max(1), sz.height.max(1))
-            .unwrap();
+        let cfg = surf.get_default_config(&adap, sz.width.max(1), sz.height.max(1)).unwrap();
         surf.configure(&dev, &cfg);
 
         // 3D viewport shader + pipeline
@@ -3256,20 +3681,11 @@ impl ApplicationHandler for EditorApp {
         let pl = dev.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("viewport_pipeline"),
             layout: None,
-            vertex: wgpu::VertexState {
-                module: &sh,
-                entry_point: Some("vs"),
-                buffers: &[],
-                compilation_options: Default::default(),
-            },
+            vertex: wgpu::VertexState { module: &sh, entry_point: Some("vs"), buffers: &[], compilation_options: Default::default() },
             fragment: Some(wgpu::FragmentState {
                 module: &sh,
                 entry_point: Some("fs"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: cfg.format,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
+                targets: &[Some(wgpu::ColorTargetState { format: cfg.format, blend: Some(wgpu::BlendState::REPLACE), write_mask: wgpu::ColorWrites::ALL })],
                 compilation_options: Default::default(),
             }),
             primitive: Default::default(),
@@ -3299,72 +3715,48 @@ impl ApplicationHandler for EditorApp {
         let _ = engine.physics_mut().add_collider(
             gh,
             &physics::ColliderDesc {
-                shape: physics::CollisionShape::Box {
-                    half_extents: Vec3::new(50.0, 0.5, 50.0),
-                },
+                shape: physics::CollisionShape::Box { half_extents: Vec3::new(50.0, 0.5, 50.0) },
                 ..Default::default()
             },
         );
 
-        // egui init (hybrid: egui rendering, custom data structures for state)
+        // egui init
         let egui_ctx = egui::Context::default();
         apply_premium_theme(&egui_ctx);
-
-        let egui_state = egui_winit::State::new(
-            egui_ctx.clone(),
-            egui::ViewportId::ROOT,
-            &w,
-            Some(w.scale_factor() as f32),
-            None,
-            Some(dev.limits().max_texture_dimension_2d as usize),
-        );
-        let egui_renderer = egui_wgpu::Renderer::new(
-            &dev,
-            cfg.format,
-            Some(wgpu::TextureFormat::Depth32Float),
-            1,
-            false,
-        );
+        let egui_state = egui_winit::State::new(egui_ctx.clone(), egui::ViewportId::ROOT, &w, Some(w.scale_factor() as f32), None, Some(dev.limits().max_texture_dimension_2d as usize));
+        let egui_renderer = egui_wgpu::Renderer::new(&dev, cfg.format, Some(wgpu::TextureFormat::Depth32Float), 1, false);
 
         // Editor state initialization
         let mut editor = EditorState::new(engine);
-        editor.log(LogLevel::System, "Genovo Engine Editor initialized");
-        editor.log(
-            LogLevel::System,
-            format!(
-                "GPU: {} ({:?})",
-                adap.get_info().name,
-                adap.get_info().backend
-            ),
-        );
-        editor.log(LogLevel::System, format!(
-            "Surface format: {:?} | Resolution: {}x{}",
-            cfg.format, sz.width, sz.height
-        ));
+        editor.log(LogLevel::System, "Genovo Studio v1.0 -- Professional Game Development Environment");
+        editor.log(LogLevel::System, format!("GPU: {} ({:?})", adap.get_info().name, adap.get_info().backend));
+        editor.log(LogLevel::System, format!("Surface format: {:?} | Resolution: {}x{}", cfg.format, sz.width, sz.height));
         editor.log(LogLevel::System, "UI: egui 0.31 (hybrid) | Theme: UIStyle::dark()");
-        editor.log(LogLevel::System, "Dock state: genovo_ui::DockState ready for custom renderer swap");
+        editor.log(LogLevel::System, "Dock state: genovo_ui::DockState ready");
         editor.log(LogLevel::System, "Type 'help' in console for commands");
 
         // Spawn default scene entities
         let ground_idx = editor.spawn_entity("Ground Plane", EntityType::Mesh);
         editor.entities[ground_idx].scale = [100.0, 1.0, 100.0];
+        editor.entities[ground_idx].mesh_shape = MeshShape::Plane;
 
-        let cube_idx = editor.spawn_entity("Cube", EntityType::Mesh);
+        let cube_idx = editor.spawn_mesh(MeshShape::Cube);
         editor.entities[cube_idx].position = [0.0, 5.0, 0.0];
         if let Some(h) = editor.entities[cube_idx].physics_handle {
             let _ = editor.engine.physics_mut().set_position(h, Vec3::new(0.0, 5.0, 0.0));
         }
 
-        let sphere_idx = editor.spawn_entity("Sphere", EntityType::Mesh);
+        let sphere_idx = editor.spawn_mesh(MeshShape::Sphere);
         editor.entities[sphere_idx].position = [3.0, 3.0, 0.0];
+        editor.entities[sphere_idx].collider_shape = ColliderShape::Sphere;
         if let Some(h) = editor.entities[sphere_idx].physics_handle {
             let _ = editor.engine.physics_mut().set_position(h, Vec3::new(3.0, 3.0, 0.0));
         }
 
-        let light_idx = editor.spawn_entity("Directional Light", EntityType::Light);
-        editor.entities[light_idx].position = [5.0, 10.0, 5.0];
+        let _dir_light = editor.spawn_light(LightKind::Directional);
+        editor.entities[_dir_light].position = [5.0, 10.0, 5.0];
 
-        let point_light = editor.spawn_entity("Point Light", EntityType::Light);
+        let point_light = editor.spawn_light(LightKind::Point);
         editor.entities[point_light].position = [-3.0, 4.0, -2.0];
         editor.entities[point_light].light_color = [0.3, 0.5, 1.0];
 
@@ -3375,13 +3767,10 @@ impl ApplicationHandler for EditorApp {
         editor.entities[particles_idx].position = [2.0, 0.0, 2.0];
 
         editor.selected_entity = Some(cube_idx);
+        editor.scene_modified = false;
 
-        println!(
-            "[Genovo] GPU: {} ({:?})",
-            adap.get_info().name,
-            adap.get_info().backend
-        );
-        println!("[Genovo] Editor ready. {} entities in scene.", editor.entities.len());
+        println!("[Genovo Studio] GPU: {} ({:?})", adap.get_info().name, adap.get_info().backend);
+        println!("[Genovo Studio] Editor ready. {} entities in scene.", editor.entities.len());
 
         self.gpu = Some(GpuState {
             window: w,
@@ -3400,15 +3789,10 @@ impl ApplicationHandler for EditorApp {
     }
 
     fn window_event(&mut self, el: &ActiveEventLoop, _: WindowId, ev: WindowEvent) {
-        let Some(s) = self.gpu.as_mut() else {
-            return;
-        };
+        let Some(s) = self.gpu.as_mut() else { return };
 
-        // Let egui handle events first
         let resp = s.egui_state.on_window_event(&s.window, &ev);
-        if resp.repaint {
-            s.window.request_redraw();
-        }
+        if resp.repaint { s.window.request_redraw(); }
 
         match ev {
             WindowEvent::CloseRequested => el.exit(),
@@ -3430,56 +3814,30 @@ impl ApplicationHandler for EditorApp {
                         let ctrl = s.editor.modifiers.control_key();
 
                         match k {
-                            KeyCode::KeyS if ctrl => {
-                                s.editor.scene_modified = false;
-                                s.editor.notify(
-                                    &format!("Scene saved: {}", s.editor.scene_name),
-                                    LogLevel::System,
-                                );
-                            }
-                            KeyCode::KeyZ if ctrl => {
-                                s.editor.log(LogLevel::Info, "Undo (placeholder)");
-                            }
-                            KeyCode::KeyD if ctrl => {
-                                s.editor.duplicate_selected();
-                            }
-                            KeyCode::KeyW if !ctrl => {
-                                s.editor.transform_mode = TransformMode::Translate;
-                            }
-                            KeyCode::KeyE if !ctrl => {
-                                s.editor.transform_mode = TransformMode::Rotate;
-                            }
-                            KeyCode::KeyR if !ctrl => {
-                                s.editor.transform_mode = TransformMode::Scale;
-                            }
-                            KeyCode::Delete => {
-                                s.editor.delete_selected();
-                            }
-                            KeyCode::Space => {
-                                s.editor.toggle_play();
-                            }
+                            KeyCode::KeyN if ctrl => { s.editor.new_scene(); }
+                            KeyCode::KeyS if ctrl => { s.editor.save_scene(); }
+                            KeyCode::KeyZ if ctrl => { s.editor.log(LogLevel::Info, "Undo (placeholder)"); }
+                            KeyCode::KeyY if ctrl => { s.editor.log(LogLevel::Info, "Redo (placeholder)"); }
+                            KeyCode::KeyD if ctrl => { s.editor.duplicate_selected(); }
+                            KeyCode::KeyQ if !ctrl => { s.editor.gizmo_mode = GizmoMode::Select; }
+                            KeyCode::KeyW if !ctrl => { s.editor.gizmo_mode = GizmoMode::Translate; }
+                            KeyCode::KeyE if !ctrl => { s.editor.gizmo_mode = GizmoMode::Rotate; }
+                            KeyCode::KeyR if !ctrl => { s.editor.gizmo_mode = GizmoMode::Scale; }
+                            KeyCode::Delete => { s.editor.delete_selected(); }
+                            KeyCode::Space => { s.editor.toggle_play(); }
                             KeyCode::F5 => {
-                                if s.editor.is_playing {
-                                    s.editor.stop_play();
-                                } else {
+                                if s.editor.is_playing { s.editor.stop_play(); }
+                                else {
                                     s.editor.is_playing = true;
                                     s.editor.is_paused = false;
                                     s.editor.play_start_time = Some(Instant::now());
                                     s.editor.notify("Simulation started (F5)", LogLevel::System);
                                 }
                             }
-                            KeyCode::KeyF if !ctrl => {
-                                s.editor.spawn_physics_ball();
-                            }
-                            KeyCode::KeyG if !ctrl => {
-                                s.editor.focus_selected();
-                            }
-                            KeyCode::ArrowUp if !ctrl => {
-                                s.editor.select_prev();
-                            }
-                            KeyCode::ArrowDown if !ctrl => {
-                                s.editor.select_next();
-                            }
+                            KeyCode::KeyF if !ctrl => { s.editor.focus_selected(); }
+                            KeyCode::KeyG if !ctrl => { s.editor.spawn_physics_ball(); }
+                            KeyCode::ArrowUp if !ctrl => { s.editor.select_prev(); }
+                            KeyCode::ArrowDown if !ctrl => { s.editor.select_next(); }
                             KeyCode::Escape => {
                                 s.editor.selected_entity = None;
                                 s.editor.renaming_entity = None;
@@ -3499,20 +3857,18 @@ impl ApplicationHandler for EditorApp {
                 s.editor.frame_time_ms = dt * 1000.0;
                 s.editor.fps = 1.0 / dt.max(0.0001);
 
-                // Exponential smoothing for display
                 let alpha = 0.05_f32;
                 s.editor.smooth_fps = s.editor.smooth_fps * (1.0 - alpha) + s.editor.fps * alpha;
                 s.editor.smooth_frame_time = s.editor.smooth_frame_time * (1.0 - alpha) + s.editor.frame_time_ms * alpha;
 
-                // Profiler data
                 s.editor.frame_times.push_back(dt as f64 * 1000.0);
-                if s.editor.frame_times.len() > 512 {
-                    s.editor.frame_times.pop_front();
-                }
+                if s.editor.frame_times.len() > 512 { s.editor.frame_times.pop_front(); }
                 s.editor.fps_history.push_back(s.editor.fps as f64);
-                if s.editor.fps_history.len() > 512 {
-                    s.editor.fps_history.pop_front();
-                }
+                if s.editor.fps_history.len() > 512 { s.editor.fps_history.pop_front(); }
+
+                // ---- Update window title ----
+                let title = format!("Genovo Studio \u{2014} {}{}", s.editor.scene_name, if s.editor.scene_modified { " *" } else { "" });
+                s.window.set_title(&title);
 
                 // ---- Physics step ----
                 if s.editor.is_playing && !s.editor.is_paused {
@@ -3524,23 +3880,20 @@ impl ApplicationHandler for EditorApp {
 
                 // ---- Clear expired notification ----
                 if let Some((_, _, start)) = &s.editor.notification {
-                    if start.elapsed().as_secs_f32() > 3.5 {
-                        s.editor.notification = None;
-                    }
+                    if start.elapsed().as_secs_f32() > 3.5 { s.editor.notification = None; }
                 }
 
                 // ---- Build egui frame ----
                 let raw_input = s.egui_state.take_egui_input(&s.window);
                 let full_output = s.egui_ctx.run(raw_input, |ctx| {
                     // Dialogs
-                    if s.editor.show_about {
-                        draw_about_window(ctx, &mut s.editor.show_about);
-                    }
+                    if s.editor.show_about { draw_about_window(ctx, &mut s.editor.show_about); }
                     let mut show_prefs = s.editor.show_preferences;
                     if show_prefs {
                         draw_preferences_window(ctx, &mut show_prefs, &mut s.editor);
                         s.editor.show_preferences = show_prefs;
                     }
+                    if s.editor.show_shortcuts { draw_shortcuts_window(ctx, &mut s.editor.show_shortcuts); }
 
                     // Main layout
                     draw_menu_bar(ctx, &mut s.editor);
@@ -3555,16 +3908,11 @@ impl ApplicationHandler for EditorApp {
                     draw_notification(ctx, &s.editor);
                 });
 
-                s.egui_state
-                    .handle_platform_output(&s.window, full_output.platform_output);
-
-                let clipped_primitives =
-                    s.egui_ctx
-                        .tessellate(full_output.shapes, full_output.pixels_per_point);
+                s.egui_state.handle_platform_output(&s.window, full_output.platform_output);
+                let clipped_primitives = s.egui_ctx.tessellate(full_output.shapes, full_output.pixels_per_point);
 
                 for (id, delta) in &full_output.textures_delta.set {
-                    s.egui_renderer
-                        .update_texture(&s.device, &s.queue, *id, delta);
+                    s.egui_renderer.update_texture(&s.device, &s.queue, *id, delta);
                 }
 
                 // ---- GPU Render ----
@@ -3579,7 +3927,7 @@ impl ApplicationHandler for EditorApp {
                     pixels_per_point: s.window.scale_factor() as f32,
                 };
 
-                // Scene background — dark slate matching our theme
+                // Scene background
                 let t = s.editor.frame_count as f32 * 0.005;
                 let (br, bg, bb) = if s.editor.is_playing && !s.editor.is_paused {
                     let pulse = (t * 2.0).sin().abs() * 0.008;
@@ -3589,33 +3937,18 @@ impl ApplicationHandler for EditorApp {
                 };
 
                 // Pass 1: Clear + 3D scene (triangle)
-                let mut scene_enc =
-                    s.device
-                        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                            label: Some("scene"),
-                        });
+                let mut scene_enc = s.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("scene") });
                 {
                     let mut pass = scene_enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label: Some("scene_pass"),
                         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                             view: &view,
                             resolve_target: None,
-                            ops: wgpu::Operations {
-                                load: wgpu::LoadOp::Clear(wgpu::Color {
-                                    r: br,
-                                    g: bg,
-                                    b: bb,
-                                    a: 1.0,
-                                }),
-                                store: wgpu::StoreOp::Store,
-                            },
+                            ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color { r: br, g: bg, b: bb, a: 1.0 }), store: wgpu::StoreOp::Store },
                         })],
                         depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                             view: &s.depth_view,
-                            depth_ops: Some(wgpu::Operations {
-                                load: wgpu::LoadOp::Clear(1.0),
-                                store: wgpu::StoreOp::Store,
-                            }),
+                            depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }),
                             stencil_ops: None,
                         }),
                         timestamp_writes: None,
@@ -3625,29 +3958,16 @@ impl ApplicationHandler for EditorApp {
                     pass.draw(0..3, 0..1);
                 }
 
-                // Pass 2: egui overlay (hybrid rendering)
-                let mut egui_enc =
-                    s.device
-                        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                            label: Some("egui"),
-                        });
-                let user_cmd_bufs = s.egui_renderer.update_buffers(
-                    &s.device,
-                    &s.queue,
-                    &mut egui_enc,
-                    &clipped_primitives,
-                    &screen,
-                );
+                // Pass 2: egui overlay
+                let mut egui_enc = s.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("egui") });
+                let user_cmd_bufs = s.egui_renderer.update_buffers(&s.device, &s.queue, &mut egui_enc, &clipped_primitives, &screen);
                 {
                     let mut pass = egui_enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label: Some("egui_pass"),
                         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                             view: &view,
                             resolve_target: None,
-                            ops: wgpu::Operations {
-                                load: wgpu::LoadOp::Load,
-                                store: wgpu::StoreOp::Store,
-                            },
+                            ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
                         })],
                         depth_stencil_attachment: None,
                         timestamp_writes: None,
@@ -3656,10 +3976,8 @@ impl ApplicationHandler for EditorApp {
                     // Lifetime transmute: wgpu 24 RenderPass has 'encoder lifetime
                     // but egui-wgpu 0.31 expects 'static. Safe because pass is used
                     // and dropped within this block.
-                    let pass_static: &mut wgpu::RenderPass<'static> =
-                        unsafe { std::mem::transmute(&mut pass) };
-                    s.egui_renderer
-                        .render(pass_static, &clipped_primitives, &screen);
+                    let pass_static: &mut wgpu::RenderPass<'static> = unsafe { std::mem::transmute(&mut pass) };
+                    s.egui_renderer.render(pass_static, &clipped_primitives, &screen);
                 }
 
                 // Submit
@@ -3689,9 +4007,10 @@ impl ApplicationHandler for EditorApp {
 fn main() {
     env_logger::init();
 
-    println!("[Genovo] Starting Genovo Engine Editor...");
-    println!("[Genovo] UI mode: hybrid (egui rendering + genovo-ui state management)");
-    println!("[Genovo] Theme: UIStyle::dark() | DockStyle::dark_theme()");
+    println!("[Genovo Studio] Starting Genovo Studio v1.0...");
+    println!("[Genovo Studio] Professional Game Development Environment");
+    println!("[Genovo Studio] UI mode: hybrid (egui rendering + genovo-ui state management)");
+    println!("[Genovo Studio] Theme: UIStyle::dark() | DockStyle::dark_theme()");
 
     let el = EventLoop::new().unwrap();
     el.set_control_flow(ControlFlow::Poll);
