@@ -46,9 +46,12 @@
 pub mod bindings;
 pub mod coroutines;
 pub mod debugger;
+pub mod ffi_bridge;
+pub mod gc;
 pub mod module_system;
 pub mod optimizer;
 pub mod stdlib;
+pub mod type_system;
 pub mod vm;
 
 pub use bindings::{BindingRegistry, ScriptBindable, ScriptComponent, ScriptSystem};

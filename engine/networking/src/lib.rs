@@ -86,3 +86,16 @@ pub use encryption::{
     PacketIntegrity, PrivateKey, PublicKey, ReplayWindow, SecureChannel, SharedSecret,
     U256, modpow_u256,
 };
+pub use http_client::{
+    HeaderMap, HttpClient, HttpClientConfig, HttpError, HttpMethod, HttpRequest,
+    HttpResponse, JsonValue, ParsedUrl, PoolStats, QueryBuilder,
+    base64_encode, parse_json, percent_decode, percent_encode,
+};
+pub use web_socket::{
+    ReconnectPolicy, WebSocket, WsCloseCode, WsConfig, WsError, WsFrame,
+    WsMessage, WsOpcode, WsState, WsStats, WsUrl,
+};
+pub use network_stats::{
+    ChannelStats, GraphData, NetworkQuality, NetworkStatsCollector,
+    NetworkStatsSummary, RollingSamples, RttHistogram, StatsSnapshot,
+};
