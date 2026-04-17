@@ -17,6 +17,7 @@
 //! - **Resources** -- singleton values with change-tracked access wrappers.
 
 pub mod archetype;
+pub mod bundle;
 pub mod change_detection;
 pub mod commands;
 pub mod component;
@@ -28,6 +29,7 @@ pub mod relations;
 pub mod resource;
 pub mod schedule;
 pub mod system;
+pub mod system_params;
 pub mod world;
 pub mod world_query;
 
@@ -58,4 +60,18 @@ pub use world_query::{
     AccessMode, AnyOf, AnyOfMarker, CompiledQuery, ComponentAccess, EntityMut, EntityRef,
     FilterDescriptor, JoinedQuery, Optional, QueryRow, QuerySnapshot, WorldQueryBuilder,
     WorldQueryBuilderBound,
+};
+
+// Bundle re-exports.
+pub use bundle::{
+    Bundle, BundleBuilder, CameraBundle, CameraData, ColliderData, ColliderShape, LightBundle,
+    LightData, LightType, MaterialRef, MeshBundle, MeshRef, PhysicsBundle, ProjectionType,
+    RigidBodyData, RigidBodyType, SpriteBundle, SpriteData, TransformData,
+};
+
+// System parameter re-exports.
+pub use system_params::{
+    Commands, EventReader, EventWriter, ExclusiveSystem, IntoSystem, Local, ParamSystemAdapter,
+    QueryParamIter, ResParam, ResMutParam, RunCondition, RunConditionId, RunConditionRegistry,
+    SystemMeta, SystemParam, SystemParamAccess, SystemParamState,
 };

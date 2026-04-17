@@ -12,6 +12,7 @@
 //! - **Prefabs** -- serializable entity templates with per-instance overrides.
 
 pub mod ecs_bridge;
+pub mod hierarchy_system;
 pub mod node;
 pub mod prefab;
 pub mod scene_serializer;
@@ -32,3 +33,10 @@ pub use scene_serializer::{
     SerializedScene, SerializedValue,
 };
 pub use transform::{GlobalTransform, TransformComponent, TransformHierarchy, TransformSystem};
+
+// Hierarchy system re-exports.
+pub use hierarchy_system::{
+    ancestor_path, collect_descendants, despawn_recursive, detach_children, hierarchy_depth,
+    is_ancestor_of, lowest_common_ancestor, root_ancestor, set_parent, remove_parent, siblings,
+    subtree_count, Children, DirtyTransform, HierarchyPlugin, Parent, PropagateTransforms,
+};
