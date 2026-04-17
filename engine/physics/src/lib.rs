@@ -43,7 +43,28 @@
 //!   box cast, overlap, and point queries with configurable filters
 //! - **Trigger volumes** (`trigger_volumes`): sensor shapes with enter/stay/exit
 //!   event tracking, callbacks, one-shot triggers, cooldowns, and layer filtering
+//!
+//! ## Extended Physics Subsystems
+//!
+//! - **Particle physics** (`particle_physics`): PBD particle simulation with
+//!   mass-spring networks, distance/bending/volume constraints, strain limiting,
+//!   self-collision via spatial hashing, emitters, and groups
+//! - **Magnetic fields** (`magnetic_field`): electromagnetic dipole fields, Lorentz
+//!   force on charged particles, field superposition, field line visualization
+//! - **Aerodynamics** (`aerodynamics`): lift/drag computation, NACA airfoil profiles,
+//!   stall modeling, parachute drag, glider physics, paper airplane tumble
+//! - **Wind system** (`wind_system`): directional wind, periodic/random gusts,
+//!   turbulence zones, Beaufort scale presets, spatial wind field sampling
+//! - **Advanced fracture** (`fracture_v2`): runtime mesh fracture, stress propagation,
+//!   crack initiation/propagation, fragment mass/inertia, multi-material support
+//! - **Physics debug** (`physics_debug`): collision shape wireframes, contact points/
+//!   normals, joint axes/limits, velocity arrows, broadphase grid, constraint errors
+//! - **Physics materials** (`physics_materials`): named material database (ice, rubber,
+//!   wood, metal, glass, concrete, sand), combination rules, contact sound hints
+//! - **Physics profiler** (`physics_profiler`): per-phase timing, pair/island/sleeping
+//!   counts, solver convergence, memory usage, worst-frame tracking
 
+pub mod aerodynamics;
 pub mod backends;
 pub mod buoyancy;
 pub mod character_physics;
@@ -55,14 +76,21 @@ pub mod continuous_collision;
 pub mod destruction;
 pub mod dynamics;
 pub mod fluid;
+pub mod fracture_v2;
 pub mod interface;
+pub mod magnetic_field;
 pub mod motor_joint;
+pub mod particle_physics;
+pub mod physics_debug;
+pub mod physics_materials;
+pub mod physics_profiler;
 pub mod ragdoll;
 pub mod rope;
 pub mod softbody;
 pub mod spatial_query;
 pub mod trigger_volumes;
 pub mod vehicle;
+pub mod wind_system;
 
 // Re-exports for ergonomic top-level access.
 pub use collision::{
@@ -107,4 +135,46 @@ pub use spatial_query::{
 pub use trigger_volumes::{
     TriggerComponent, TriggerEntity, TriggerEvent, TriggerEventRecord, TriggerShape,
     TriggerSystem, TriggerVolume,
+};
+
+// Re-exports for extended physics subsystems.
+pub use particle_physics::{
+    BendingConstraint as PbdBendingConstraint, ConstraintHandle as PbdConstraintHandle,
+    DistanceConstraint as PbdDistanceConstraint, MassSpringNetworkBuilder, Particle,
+    ParticleEmitter, ParticleEmitterConfig, ParticleGroup, ParticleId,
+    ParticlePhysicsComponent, ParticlePhysicsSystem, ParticleSimulation,
+    ParticleSimulationSettings, ParticleSimulationStats, SpatialHash,
+    StrainLimiter, VolumeConstraint as PbdVolumeConstraint,
+};
+pub use magnetic_field::{
+    ChargedBodyComponent, ChargedParticle, FieldFalloff, FieldLine, FieldLineData,
+    MagneticDipole, MagneticFieldComponent, MagneticFieldSystem, MagneticSourceId,
+    UniformField as MagneticUniformField,
+};
+pub use aerodynamics::{
+    AerodynamicBody, AerodynamicsComponent, AerodynamicsSystem, AeroCoefficients,
+    AeroModel, GliderModel, NacaAirfoil, PaperAirplane, PaperFlightMode,
+    Parachute, ParachuteState, SurfaceDrag,
+};
+pub use wind_system::{
+    BeaufortScale, GustPattern, TurbulenceZone, WindField, WindReceiverComponent,
+    WindSample, WindSettings, WindSource, WindSourceComponent, WindSourceId,
+};
+pub use fracture_v2::{
+    CrackNetwork, CrackPattern, CrackSegment, FracturableComponent, FractureConfig,
+    FractureEvent, FractureManager, FractureMaterial, FractureMeshV2, FractureSound,
+    FractureSystem, Fragment, StressField,
+};
+pub use physics_debug::{
+    DebugBodyInfo, DebugBroadphaseGrid, DebugCollisionShape, DebugConstraintError,
+    DebugContactPoint, DebugJointInfo, DebugPrimitive, DebugRenderStats,
+    PhysicsDebugRenderer, PhysicsDebugSettings,
+};
+pub use physics_materials::{
+    CombinedMaterial, CombineRule, ContactSoundHint, ImpactEffect, MaterialDatabase,
+    MaterialPairOverride, PhysMaterial, PhysMaterialId, SurfaceType,
+};
+pub use physics_profiler::{
+    CollisionPairCounts, FrameRecord, IslandInfo, MemoryUsage, PhaseTimings,
+    PhysicsObjectCounts, PhysicsProfiler, SolverStats, WorstFrameRecord,
 };
