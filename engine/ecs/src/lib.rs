@@ -47,6 +47,10 @@ pub mod component_hooks;
 // from snapshot, used for undo/redo and networking.
 pub mod world_snapshot;
 
+// Entity recycling pool: pre-allocate entity IDs, recycle despawned entities,
+// reduce allocation overhead, pool warm-up, statistics.
+pub mod entity_pool;
+
 // Re-exports for ergonomic use from downstream crates.
 pub use component::{Component, ComponentId, ComponentStorage};
 pub use entity::{Entity, EntityBuilder, EntityStorage};

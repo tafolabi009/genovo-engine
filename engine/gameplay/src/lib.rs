@@ -112,6 +112,31 @@ pub mod particle_effects;
 // hazard zones with damage-over-time.
 pub mod environmental_hazards;
 
+// Level/map progression: level sequence, level unlocking conditions, par time/score,
+// star ratings, level statistics, level select data, world map nodes.
+pub mod level_progression;
+
+// Shop interface: shop inventory, buy/sell transactions, dynamic pricing, limited
+// stock, restock timers, shop categories, currency display, purchase confirmation.
+pub mod shop_system;
+
+// Buff/debuff framework: buff stacking rules (stack count, refresh duration,
+// strongest wins), buff categories, buff immunity, buff cleansing, buff icons.
+pub mod buff_system;
+
+// Death and respawn: respawn points, respawn timer, respawn invulnerability,
+// death penalty (XP loss, item drop), spectator mode, respawn wave timing.
+pub mod respawn_system;
+
+// Object pool for gameplay entities: pre-allocate entities, acquire/release,
+// auto-grow, warm pool on scene load, pool statistics, per-type pools.
+pub mod object_pooling;
+
+// Camera gameplay effects: screen shake from damage, speed lines at high velocity,
+// scope zoom, thermal/night vision overlays, underwater tint, death grayscale,
+// hit indicators on screen edges.
+pub mod camera_effects;
+
 // ---------------------------------------------------------------------------
 // Re-exports: character controller
 // ---------------------------------------------------------------------------

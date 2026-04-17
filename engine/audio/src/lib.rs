@@ -89,6 +89,15 @@ pub use voice_synthesis::{
 // farthest), sound categories, fade manager, crossfade, ducking, audio focus.
 pub mod audio_playback;
 
+// Streaming audio playback: read audio data in chunks from disk, double-buffered
+// streaming, seek support, loop points, streaming from asset system, memory-limited
+// playback for large files.
+pub mod audio_streaming;
+
+// Audio state snapshots: capture entire audio state (bus volumes, effect params,
+// playing sounds), restore snapshot, interpolate between snapshots, preset management.
+pub mod audio_snapshot;
+
 pub use audio_bus_mixer::{
     AudioBusState, BusCompressor, BusId, BusKind, BusMixer, BusSnapshot,
     SendConfig, SnapshotCrossfade, VuMeter,

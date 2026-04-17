@@ -55,6 +55,10 @@ pub mod profiling_v2;
 // concurrent queue.
 pub mod data_structures;
 
+// Engine versioning: semantic version struct, version comparison, build info
+// (commit hash, build date, platform), feature flags, version compatibility checking.
+pub mod version;
+
 // Re-exports for new profiling types.
 pub use profiling_v2::{
     AlertSeverity as ProfileAlertSeverity, FlameGraphEntry, FrameProfile,

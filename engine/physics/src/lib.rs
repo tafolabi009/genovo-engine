@@ -139,6 +139,23 @@ pub mod physics_interpolation;
 // shape adding/removing at runtime.
 pub mod compound_shapes;
 
+// Water interaction: water volumes, submersion detection, buoyancy forces per shape,
+// water drag, water current forces, splash effects, wake generation, water surface
+// deformation.
+pub mod water_physics;
+
+// Joint motor system: velocity motors, position motors (servo), spring motors,
+// motor limits, motor force feedback, motor enable/disable, motor profiles.
+pub mod joint_motors;
+
+// Advanced collision filtering: collision groups, collision masks per shape,
+// ignore pairs, temporary ignore (duration-based), collision rules engine.
+pub mod collision_filters_v2;
+
+// Physics state serialization: save/load entire physics world state, body
+// positions/velocities, joint states, constraint states, deterministic replay.
+pub mod physics_serialization;
+
 // Re-exports for ergonomic top-level access.
 pub use collision::{
     ColliderDesc, CollisionEvent, CollisionLayer, CollisionMask, CollisionShape, ContactManifold,

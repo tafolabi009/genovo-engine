@@ -230,6 +230,68 @@ pub mod material_layering;
 // shadow importance (skip shadows for distant/small lights).
 pub mod shadow_system_v2;
 
+// Shadow cascade management: split schemes (uniform/log/PSSM), per-cascade viewport,
+// cascade blending at boundaries, cascade stabilization, visualization colors,
+// shadow quality per cascade.
+pub mod cascade_selection;
+
+// Texture resource caching: LRU texture pool, reference counting, texture sharing
+// between materials, cache statistics, memory budget enforcement, eviction priorities.
+pub mod texture_cache;
+
+// Draw call optimization: sort by state (shader->material->mesh), merge compatible
+// draw calls, indirect draw batching, instance merging, draw call statistics.
+pub mod draw_call_optimizer;
+
+// Shader hot-reloading: watch shader files, recompile on change, swap pipelines,
+// error recovery (keep old shader on compile failure), shader edit history.
+pub mod shader_hot_reload;
+
+// Configurable post-process stack: ordered effect chain, per-effect enable/disable/
+// weight, volume-based overrides (enter zone -> change effects), transition blending.
+pub mod post_process_stack;
+
+// Enhanced DOF: circular DOF with bokeh shapes, foreground/background separation,
+// partial occlusion, smooth transitions, DOF from camera settings.
+pub mod depth_of_field_v2;
+
+// Contact/screen-space shadows: ray-march from light direction in screen space,
+// thickness estimation, soft contact shadows, temporal filtering.
+pub mod screen_space_shadows;
+
+// Static mesh merging: combine multiple static meshes into one draw call,
+// per-material sub-meshes, bounding volume update, automatic merging.
+pub mod mesh_merger;
+
+// ---------------------------------------------------------------------------
+// Additional rendering subsystems (batch 6)
+// ---------------------------------------------------------------------------
+
+// Forward+ (tiled forward) rendering pipeline: depth prepass, light assignment
+// per tile (16x16 tiles), per-tile light list in SSBO, single-pass forward
+// render with per-tile light loop, transparent objects support, tile debug
+// visualization.
+pub mod forward_plus;
+
+// Compiled shader cache: hash shader source + defines, store compiled modules
+// on disk, load from cache if hash matches, cache invalidation, cache size
+// management, warm cache on startup.
+pub mod shader_cache;
+
+// Advanced render queue: sort by opaque (front-to-back), transparent
+// (back-to-front), shadow casters (by cascade), sky (last), overlay (on top);
+// priority override per material; queue clear/rebuild per frame.
+pub mod render_queue_v2;
+
+// Material instances with GPU uniform buffers: per-material uniform buffer,
+// dirty tracking, batch update, material parameter animation, material LOD
+// (simplified shader at distance).
+pub mod material_instance_v2;
+
+// G-Buffer configuration: configurable format (thin/standard/extended),
+// encode/decode functions, octahedron normal mapping, bandwidth analysis.
+pub mod gbuffer_layout;
+
 // ---------------------------------------------------------------------------
 // Re-exports
 // ---------------------------------------------------------------------------

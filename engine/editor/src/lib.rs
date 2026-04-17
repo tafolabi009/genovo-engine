@@ -90,3 +90,12 @@ pub mod asset_import;
 // modes, frame selected, camera bookmarks, multiple viewports
 // (perspective/top/front/right), camera speed adjustment.
 pub mod editor_camera;
+
+// Keyboard shortcut system: shortcut registry, key combination matching,
+// context-sensitive shortcuts, shortcut display in menus, rebindable shortcuts.
+pub mod editor_shortcuts;
+
+// Editor preferences: user settings persistence, UI layout save/restore,
+// recent projects, recently opened files, editor theme selection, viewport
+// settings, grid settings.
+pub mod editor_preferences;

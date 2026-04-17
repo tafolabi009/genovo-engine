@@ -125,3 +125,7 @@ pub mod bandwidth_manager;
 // limit, out-of-order delivery, duplicate packets -- for testing multiplayer
 // without real network issues.
 pub mod network_simulation;
+
+// Efficient packet serialization: bit-level packing, variable-length integers,
+// quantized floats, string table (send index instead of full string), schema versioning.
+pub mod packet_serializer;

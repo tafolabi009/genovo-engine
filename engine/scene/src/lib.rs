@@ -55,6 +55,10 @@ pub use light_system::{
 // shadow caster visibility, per-camera visibility lists.
 pub mod visibility_system;
 
+// Scene queries: find entities by name/tag/component, spatial queries (entities in
+// radius/box), raycast through scene, nearest entity, entity iteration with filters.
+pub mod scene_queries;
+
 // Hierarchy system re-exports.
     ancestor_path, collect_descendants, despawn_recursive, detach_children, hierarchy_depth,
     is_ancestor_of, lowest_common_ancestor, root_ancestor, set_parent, remove_parent, siblings,

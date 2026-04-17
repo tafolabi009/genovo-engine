@@ -53,6 +53,24 @@ pub mod world_model;
 // during dialogue, bartering/persuasion/intimidation skill checks.
 pub mod conversation;
 
+// Multi-agent behavior coordination: group goals, task assignment, role rotation,
+// synchronized actions (coordinated breach), radio communication simulation.
+pub mod behavior_coordinator;
+
+// Simple AI learning: Q-table reinforcement learning, state-action pairs, reward
+// tracking, exploration/exploitation balance (epsilon-greedy), policy serialization.
+pub mod learning;
+
+// AI debug visualization: draw perception cones, draw awareness levels, show
+// current behavior tree node, show navigation path, show steering vectors,
+// show influence map values, show blackboard contents.
+pub mod ai_debug;
+
+// Dialogue management: dialogue queue, simultaneous conversations, dialogue
+// interruption priority, dialogue cooldown, subtitled/voiced/bark modes,
+// dialogue events for gameplay triggers.
+pub mod dialogue_manager;
+
 // Re-exports for enhanced behavior trees.
 pub use behavior_tree_v2::{
     BehaviorTreeV2, BtDecorator, BtLibrary, BtNodeId, BtNodeType, BtNodeV2,
