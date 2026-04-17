@@ -11,3 +11,5 @@ log = { workspace = true }
 thiserror = { workspace = true }
 serde = { workspace = true }
 parking_lot = { workspace = true }
+wgpu = { workspace = true }
+bytemuck = { workspace = true }
