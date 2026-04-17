@@ -3955,7 +3955,7 @@ impl ApplicationHandler for EditorApp {
         let egui_ctx = egui::Context::default();
         apply_premium_theme(&egui_ctx);
         let egui_state = egui_winit::State::new(egui_ctx.clone(), egui::ViewportId::ROOT, &w, Some(w.scale_factor() as f32), None, Some(dev.limits().max_texture_dimension_2d as usize));
-        let egui_renderer = egui_wgpu::Renderer::new(&dev, cfg.format, Some(wgpu::TextureFormat::Depth32Float), 1, false);
+        let egui_renderer = egui_wgpu::Renderer::new(&dev, cfg.format, None, 1, false);
 
         // Editor state initialization
         let mut editor = EditorState::new(engine);
