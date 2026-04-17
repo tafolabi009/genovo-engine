@@ -34,6 +34,10 @@ pub use text_analyzer::{
     TextAnalyzer, TranslationDatabase, TranslationEntry, TranslationKey, TranslationMemory,
     TranslationPriority, TranslationSuggestion, UntranslatedEntry,
 };
+// Enhanced localization: dynamic string loading, font switching per locale,
+// text direction (LTR/RTL), locale-specific number/date, string validation.
+pub mod locale_manager;
+
 pub use voice_localization::{
     AudioFormat, CastingNote, FallbackChain, LipSyncData, PhonemeEvent, ResolvedVoiceAsset,
     VisemeEvent, VisemeType, VoiceAssetInfo, VoiceCoverageReport, VoiceLineId, VoiceLineMeta,

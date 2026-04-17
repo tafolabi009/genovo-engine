@@ -318,6 +318,42 @@ pub mod material_instance;
 pub mod gbuffer_layout;
 
 // ---------------------------------------------------------------------------
+// Additional rendering subsystems (batch 7)
+// ---------------------------------------------------------------------------
+
+// Enhanced PBR: clearcoat, sheen, transmission, thin-film iridescence,
+// anisotropy direction map, subsurface color, specular tint, IOR control.
+pub mod pbr_v2;
+
+// Volumetric light shafts: froxel-based integration, scattering in
+// participating media, per-light volumetric contribution, temporal reprojection.
+pub mod volumetric_lighting;
+
+// Enhanced terrain: virtual texturing, clipmap rendering, tessellation LOD,
+// procedural detail, snow accumulation, puddles from rain.
+pub mod terrain_rendering_v2;
+
+// Environment probes: capture cubemap at probe position, parallax correction,
+// probe blending by distance, real-time probe update scheduling.
+pub mod environment_probe;
+
+// Procedural mesh generation: parametric surfaces, revolution surfaces,
+// extrusion, Catmull-Clark subdivision, edge loops, normal/tangent computation.
+pub mod mesh_generation;
+
+// Enhanced debug rendering: persistent shapes with duration, batched lines/
+// triangles, screen-space text labels, wire mesh, navmesh visualization.
+pub mod debug_renderer_v2;
+
+// Shader management: shader program objects, uniform binding, texture slot
+// management, global shader parameters, shader warm-up, complexity metrics.
+pub mod shader_system;
+
+// Render world: extracted render data from ECS world, separate thread-safe
+// render representation, mesh/material/transform extraction, visibility results.
+pub mod render_world;
+
+// ---------------------------------------------------------------------------
 // Re-exports
 // ---------------------------------------------------------------------------
 

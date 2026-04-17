@@ -36,6 +36,14 @@ pub use cutscene_player::{
     CutsceneStateEvent, CutsceneTrack, EasingType, KeyframeData, LetterboxState, PlaybackState,
     TrackType, TransitionState, TransitionType,
 };
+// Cinematic camera: Bezier path following, focus tracking, dolly zoom,
+// handheld shake, rack focus, letterbox transitions.
+pub mod camera_system;
+
+// Cutscene management: cutscene loading, cutscene state machine, skip handling,
+// cutscene events, cutscene blending with gameplay.
+pub mod cutscene_manager;
+
 pub use subtitle_system::{
     ActiveSubtitleSlot, PortraitAlignment, SpeakerPortrait, SubtitleEntry, SubtitleId,
     SubtitleManager, SubtitlePosition, SubtitlePreset, SubtitleStyle, SubtitleTextAlignment,

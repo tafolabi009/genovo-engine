@@ -17,6 +17,10 @@ pub use save_game::{
     CloudSyncMetadata, ComponentData, EntityData, SaveError, SaveGame, SaveManager,
     SaveMetadata, SaveResult, SaveSlot, WorldState,
 };
+// Save encryption: AES encrypt save data, HMAC integrity check, save tampering
+// detection, encrypted cloud save, save file versioning with migration.
+pub mod save_encryption;
+
 pub use save_migration::{
     DiffSummary, DiffType, MigrationError, MigrationReport, MigrationStep, RecoveryResult,
     RecoveryStrategy, SaveDiffEntry, SaveDiffer, SaveHeader, SaveMigrationManager, SaveValidator,

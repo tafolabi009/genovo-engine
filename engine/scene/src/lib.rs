@@ -61,7 +61,7 @@ pub mod scene_queries;
 
 // Enhanced scene graph: transformation cache, dirty bit propagation, spatial
 // index integration, scene queries, scene comparison, scene merging.
-pub mod scene_graph_v2;
+pub mod scene_graph;
 
 // Component serialization: serialize/deserialize components by name, component
 // factories, component cloning, component diffing.

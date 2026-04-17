@@ -151,15 +151,15 @@ pub mod system_pipeline;
 // Enhanced world: entity archetypes, component column storage, archetype graph
 // for entity migration, typed resource storage, exclusive world access, world
 // merge/split.
-pub mod world_v2;
+pub mod world;
 
 // Enhanced executor: automatic parallelism from system access, thread pool
 // integration, system sets with ordering, run conditions, fixed timestep systems.
-pub mod system_executor_v2;
+pub mod system_executor;
 
 // Enhanced events: typed event channels, event readers with cursor, double-
 // buffered events, event drain, event forwarding, event statistics.
-pub mod event_system_v2;
+pub mod event_system;
 
 // Component registry: type-erased component operations, clone/drop/move/
 // serialize per type, component metadata, dynamic component types.

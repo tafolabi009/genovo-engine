@@ -99,3 +99,23 @@ pub mod editor_shortcuts;
 // recent projects, recently opened files, editor theme selection, viewport
 // settings, grid settings.
 pub mod editor_preferences;
+
+// World/level editor: multi-level editing, level streaming setup, world bounds
+// visualization, level connection editor.
+pub mod world_editor;
+
+// Enhanced material editor: node graph for materials, real-time preview sphere,
+// material parameter animation, material comparison.
+pub mod material_editor;
+
+// Particle effect editor: emitter configuration, force field setup, preview
+// with timeline, curve editors for particle properties.
+pub mod particle_editor;
+
+// Physics configuration editor: collision matrix editor, physics material
+// editor, joint constraint visualizer.
+pub mod physics_editor;
+
+// Settings/preferences editor: categorized settings, search, reset to defaults,
+// import/export settings.
+pub mod settings_editor;

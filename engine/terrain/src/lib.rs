@@ -49,6 +49,18 @@ pub use terrain_streaming::{
     TileHeightData, TileState,
 };
 
+// Enhanced terrain: virtual texturing integration, runtime terrain modification,
+// terrain collision update, terrain streaming, terrain instancing.
+pub mod terrain_system;
+
+// Terrain foliage: per-cell foliage data, wind animation parameters, LOD
+// transitions, instanced rendering data, seasonal changes.
+pub mod terrain_foliage;
+
+// Terrain water: water bodies (rivers, lakes, ocean), shore detection,
+// underwater rendering trigger, water flow maps, water level height query.
+pub mod terrain_water;
+
 // ---------------------------------------------------------------------------
 // Error type
 // ---------------------------------------------------------------------------
