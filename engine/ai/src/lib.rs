@@ -53,6 +53,27 @@ pub mod world_model;
 // during dialogue, bartering/persuasion/intimidation skill checks.
 pub mod conversation;
 
+// Re-exports for enhanced behavior trees.
+pub use behavior_tree_v2::{
+    BehaviorTreeV2, BtDecorator, BtLibrary, BtNodeId, BtNodeType, BtNodeV2,
+    BtStatus, DecoratorType, SharedBlackboard, UtilityConsideration,
+    UtilityCurve, UtilityScore,
+};
+
+// Re-exports for world model.
+pub use world_model::{
+    AIWorldModel, CellOccupancy, EntityClass, EntityId as WorldEntityId,
+    EnvironmentState, OccupancyGrid, ObjectiveInfo, ResourceLocation,
+    ThreatLevel, ThreatMap, WeatherCondition, WorldEntity,
+};
+
+// Re-exports for conversation system.
+pub use conversation::{
+    Conversation, ConversationId, ConversationMemory, ConversationParticipant,
+    ConversationState, ConversationSystem, ConversationTopic, DialogueResponse,
+    ParticipantId, SkillCheck, SkillCheckResult, SkillCheckType, TopicId,
+};
+
 pub use behavior_trees::{
     ActionNode, BehaviorContext, BehaviorNode, BehaviorTree, BehaviorTreeAsset,
     BehaviorTreeBuilder, Blackboard, ConditionDecorator, ConditionNode, Cooldown, Inverter,

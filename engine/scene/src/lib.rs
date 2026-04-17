@@ -50,8 +50,12 @@ pub use light_system::{
     ShadowResolution, color_temperature_to_rgb,
 };
 
+// Visibility determination: frustum culling integration, occlusion query integration,
+// portal-based indoor visibility, PVS query, distance culling, small-object culling,
+// shadow caster visibility, per-camera visibility lists.
+pub mod visibility_system;
+
 // Hierarchy system re-exports.
-pub use hierarchy_system::{
     ancestor_path, collect_descendants, despawn_recursive, detach_children, hierarchy_depth,
     is_ancestor_of, lowest_common_ancestor, root_ancestor, set_parent, remove_parent, siblings,
     subtree_count, Children, DirtyTransform, HierarchyPlugin, Parent, PropagateTransforms,

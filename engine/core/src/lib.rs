@@ -55,6 +55,17 @@ pub mod profiling_v2;
 // concurrent queue.
 pub mod data_structures;
 
+// Re-exports for new profiling types.
+pub use profiling_v2::{
+    AlertSeverity as ProfileAlertSeverity, FlameGraphEntry, FrameProfile,
+    HotspotAlert, ProfileScope, ProfilerV2, ScopeAverage, ScopeId,
+};
+
+// Re-exports for data structures.
+pub use data_structures::{
+    BloomFilter, ConcurrentQueue, CountMinSketch, DisjointSet, LruCache, Trie,
+};
+
 // Re-export the most commonly used items at the crate root for ergonomic access.
 pub use color::{Color, ColorStop, Gradient};
 pub use curve::{AnimationCurve, BezierCurve, BSpline, CatmullRomSpline, CurveKeyframe, CurveMode};

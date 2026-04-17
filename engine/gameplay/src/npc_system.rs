@@ -410,4 +410,235 @@ mod tests {
         assert_eq!(mgr.total_count(), 1);
         assert_eq!(mgr.spawned_count(), 1);
     }
+
+    #[test]
+    fn test_bark_system() {
+        let mut bark = NpcBark::new(BarkCategory::Greeting, "Hello traveler!");
+        assert!(bark.is_available());
+        bark.play();
+        assert!(!bark.is_available());
+        bark.update(MAX_BARK_COOLDOWN + 1.0);
+        assert!(bark.is_available());
+    }
+
+    #[test]
+    fn test_dialogue_trigger() {
+        let mut trigger = NpcDialogueTrigger::new(DialogueTriggerKind::Proximity, 42);
+        assert!(trigger.can_trigger());
+        trigger.trigger();
+        assert!(trigger.can_trigger()); // not one-shot
+        trigger.one_shot = true;
+        trigger.trigger();
+        assert!(!trigger.can_trigger()); // one-shot, already triggered
+    }
+
+    #[test]
+    fn test_nearby_npcs() {
+        let mut mgr = NpcManager::new();
+        let mut npc = NpcDefinition::new(NpcId(1), "Merchant");
+        npc.position = [10.0, 0.0, 10.0];
+        npc.spawned = true;
+        mgr.npcs.insert(NpcId(1), npc);
+        mgr.spawned_ids.push(NpcId(1));
+        let nearby = mgr.nearby_npcs([10.0, 0.0, 10.0], 5.0);
+        assert_eq!(nearby.len(), 1);
+        let far = mgr.nearby_npcs([100.0, 0.0, 100.0], 5.0);
+        assert_eq!(far.len(), 0);
+    }
+
+    #[test]
+    fn test_npc_schedule_night() {
+        let mut schedule = NpcSchedule::new();
+        schedule.add(NpcScheduleEntry::new(22, 6, NpcState::Sleeping, [0.0, 0.0, 0.0]));
+        // Should be active at midnight (hour 0)
+        assert!(schedule.current_entry(0).is_some());
+        assert_eq!(schedule.current_entry(0).unwrap().state, NpcState::Sleeping);
+        // Should be active at 23:00
+        assert!(schedule.current_entry(23).is_some());
+        // Should NOT be active at 12:00
+        assert!(schedule.current_entry(12).is_none());
+    }
+
+    #[test]
+    fn test_merchant_restock() {
+        let mut merchant = NpcMerchant::new();
+        merchant.add_item(MerchantItem {
+            item_type_id: 1, stock: 0, base_price: 50,
+            price_markup: 1.0, restock_rate: 5.0, max_stock: 10, level_requirement: 1,
+        });
+        assert_eq!(merchant.items[0].stock, 0);
+        merchant.restock();
+        assert_eq!(merchant.items[0].stock, 5);
+        merchant.restock();
+        assert_eq!(merchant.items[0].stock, 10); // capped at max
+    }
+
+    #[test]
+    fn test_npc_distance() {
+        let npc = NpcDefinition::new(NpcId(1), "Test");
+        assert!((npc.distance_to([3.0, 4.0, 0.0]) - 5.0).abs() < 0.01);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// NPC preset builders
+// ---------------------------------------------------------------------------
+
+/// Builder for common NPC archetypes.
+pub struct NpcPresets;
+
+impl NpcPresets {
+    /// Create a guard NPC with a patrol route.
+    pub fn guard(id: NpcId, name: &str, patrol_points: Vec<[f32; 3]>) -> NpcDefinition {
+        let mut npc = NpcDefinition::new(id, name);
+        npc.title = "Guard".to_string();
+        npc.patrol_waypoints = patrol_points;
+        npc.move_speed = 2.5;
+        npc.awareness_radius = 20.0;
+
+        let mut schedule = NpcSchedule::new();
+        schedule.add(NpcScheduleEntry {
+            hour_start: 6, hour_end: 22,
+            state: NpcState::Patrolling,
+            location: npc.position,
+            animation: NpcAnimState::Walk,
+            interruptible: true,
+            dialogue_available: true,
+            priority: 0,
+        });
+        schedule.add(NpcScheduleEntry {
+            hour_start: 22, hour_end: 6,
+            state: NpcState::Guarding,
+            location: npc.position,
+            animation: NpcAnimState::Idle,
+            interruptible: false,
+            dialogue_available: false,
+            priority: 0,
+        });
+        npc.schedule = schedule;
+
+        npc.barks.push(NpcBark::new(BarkCategory::Greeting, "Halt! State your business."));
+        npc.barks.push(NpcBark::new(BarkCategory::Warning, "Move along, citizen."));
+        npc.barks.push(NpcBark::new(BarkCategory::Idle, "All quiet on this watch."));
+
+        npc
+    }
+
+    /// Create a merchant NPC.
+    pub fn merchant(id: NpcId, name: &str, shop_pos: [f32; 3]) -> NpcDefinition {
+        let mut npc = NpcDefinition::new(id, name);
+        npc.title = "Merchant".to_string();
+        npc.position = shop_pos;
+        npc.home_position = shop_pos;
+        npc.essential = true;
+
+        let mut merchant = NpcMerchant::new();
+        merchant.buy_multiplier = 1.2;
+        merchant.sell_multiplier = 0.4;
+        npc.merchant = Some(merchant);
+
+        let mut schedule = NpcSchedule::new();
+        schedule.add(NpcScheduleEntry {
+            hour_start: 8, hour_end: 20,
+            state: NpcState::Working,
+            location: shop_pos,
+            animation: NpcAnimState::Idle,
+            interruptible: true,
+            dialogue_available: true,
+            priority: 0,
+        });
+        schedule.add(NpcScheduleEntry {
+            hour_start: 20, hour_end: 8,
+            state: NpcState::Sleeping,
+            location: [shop_pos[0] + 5.0, shop_pos[1], shop_pos[2]],
+            animation: NpcAnimState::Sleep,
+            interruptible: false,
+            dialogue_available: false,
+            priority: 0,
+        });
+        npc.schedule = schedule;
+
+        npc.barks.push(NpcBark::new(BarkCategory::Greeting, "Welcome! Browse my wares."));
+        npc.barks.push(NpcBark::new(BarkCategory::Thanks, "Pleasure doing business!"));
+        npc.barks.push(NpcBark::new(BarkCategory::Idle, "Fine goods at fair prices!"));
+
+        npc.dialogue_triggers.push(NpcDialogueTrigger::new(DialogueTriggerKind::Interaction, 100));
+
+        npc
+    }
+
+    /// Create a quest giver NPC.
+    pub fn quest_giver(id: NpcId, name: &str, position: [f32; 3], quest_dialogue_id: u32) -> NpcDefinition {
+        let mut npc = NpcDefinition::new(id, name);
+        npc.title = "Quest Giver".to_string();
+        npc.position = position;
+        npc.home_position = position;
+        npc.essential = true;
+        npc.interaction_radius = 4.0;
+
+        npc.dialogue_triggers.push({
+            let mut t = NpcDialogueTrigger::new(DialogueTriggerKind::Interaction, quest_dialogue_id);
+            t.priority = 10;
+            t
+        });
+
+        npc.barks.push(NpcBark::new(BarkCategory::Greeting, "Adventurer! I need your help!"));
+
+        npc
+    }
+
+    /// Create a civilian NPC with a daily routine.
+    pub fn civilian(id: NpcId, name: &str, home: [f32; 3], work: [f32; 3]) -> NpcDefinition {
+        let mut npc = NpcDefinition::new(id, name);
+        npc.title = "Civilian".to_string();
+        npc.position = home;
+        npc.home_position = home;
+        npc.move_speed = 1.5;
+
+        let mut schedule = NpcSchedule::new();
+        schedule.add(NpcScheduleEntry {
+            hour_start: 8, hour_end: 17,
+            state: NpcState::Working,
+            location: work,
+            animation: NpcAnimState::Work,
+            interruptible: true,
+            dialogue_available: true,
+            priority: 0,
+        });
+        schedule.add(NpcScheduleEntry {
+            hour_start: 17, hour_end: 20,
+            state: NpcState::Walking,
+            location: home,
+            animation: NpcAnimState::Walk,
+            interruptible: true,
+            dialogue_available: true,
+            priority: 0,
+        });
+        schedule.add(NpcScheduleEntry {
+            hour_start: 20, hour_end: 22,
+            state: NpcState::Eating,
+            location: home,
+            animation: NpcAnimState::Eat,
+            interruptible: true,
+            dialogue_available: true,
+            priority: 0,
+        });
+        schedule.add(NpcScheduleEntry {
+            hour_start: 22, hour_end: 8,
+            state: NpcState::Sleeping,
+            location: home,
+            animation: NpcAnimState::Sleep,
+            interruptible: false,
+            dialogue_available: false,
+            priority: 0,
+        });
+        npc.schedule = schedule;
+
+        npc.barks.push(NpcBark::new(BarkCategory::Greeting, "Good day!"));
+        npc.barks.push(NpcBark::new(BarkCategory::Idle, "Nice weather today."));
+        npc.barks.push(NpcBark::new(BarkCategory::Weather, "Looks like rain..."));
+        npc.barks.push(NpcBark::new(BarkCategory::TimeOfDay, "Getting late, I should head home."));
+
+        npc
+    }
 }

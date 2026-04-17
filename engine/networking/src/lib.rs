@@ -116,3 +116,12 @@ pub use relay_server::{
     ConnectionPairing, PairingId, RelayClientId, RelayCredentials, RelayError,
     RelayMessage, RelayServer, RelayServerConfig, RelayStats, SimpleAuthenticator,
 };
+
+// Bandwidth management: per-channel bandwidth budgets, priority-based allocation,
+// congestion detection, adaptive send rate, bandwidth smoothing, burst allowance.
+pub mod bandwidth_manager;
+
+// Network condition simulation: artificial latency, packet loss, jitter, bandwidth
+// limit, out-of-order delivery, duplicate packets -- for testing multiplayer
+// without real network issues.
+pub mod network_simulation;

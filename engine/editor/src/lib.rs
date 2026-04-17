@@ -80,3 +80,13 @@ pub use performance_monitor::{
     AlertSeverity, FrameMetrics, MemoryTracker, PerfGraphData, PerfSnapshot,
     PerformanceAlert, PerformanceConfig, PerformanceMonitor, SystemTiming,
 };
+
+// Asset import pipeline UI: drag-drop import, import settings dialogs,
+// format conversion, thumbnail generation, import progress, import history,
+// batch import.
+pub mod asset_import;
+
+// Editor camera controller: orbit/fly/focus modes, smooth transitions between
+// modes, frame selected, camera bookmarks, multiple viewports
+// (perspective/top/front/right), camera speed adjustment.
+pub mod editor_camera;
