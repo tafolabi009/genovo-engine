@@ -129,3 +129,13 @@ pub mod network_simulation;
 // Efficient packet serialization: bit-level packing, variable-length integers,
 // quantized floats, string table (send index instead of full string), schema versioning.
 pub mod packet_serializer;
+
+// Server browser: server list with ping/player count/map/mode, server query
+// protocol, favorites, history, password servers, server filtering/sorting,
+// refresh mechanism.
+pub mod server_browser;
+
+// In-game chat: text channels (all/team/whisper), message history, chat
+// commands (/team, /all, /whisper), message filtering (profanity filter stub),
+// chat UI data, chat events.
+pub mod chat_system;

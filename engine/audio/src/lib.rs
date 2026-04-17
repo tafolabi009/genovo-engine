@@ -102,3 +102,8 @@ pub use audio_bus_mixer::{
     AudioBusState, BusCompressor, BusId, BusKind, BusMixer, BusSnapshot,
     SendConfig, SnapshotCrossfade, VuMeter,
 };
+
+// Master audio engine: initialize audio device, manage all audio subsystems
+// (mixer, spatial, DSP, music, ambience), audio thread, audio update pipeline,
+// master volume, audio pause/resume, audio statistics.
+pub mod audio_engine;

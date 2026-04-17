@@ -431,3 +431,18 @@ pub use procedural_animation::{
     LeanLayer, LookAtConstraint, ProceduralAnimComponent, ProceduralAnimController,
     ProceduralWalkCycle, RecoilLayer, TailPhysics,
 };
+
+// Comprehensive input: action/axis bindings, dead zone processing, input
+// smoothing, input recording/playback, virtual inputs (for AI), input device
+// abstraction, input mapping serialization.
+pub mod input_manager;
+
+// Game mode framework: game mode state machine, game mode rules (team setup,
+// scoring, win conditions), game mode events, player spawning rules, game
+// mode transitions, match lifecycle.
+pub mod game_mode;
+
+// HUD framework: health bar, ammo display, crosshair, minimap integration,
+// compass, notification toasts, damage indicators (screen edge), interaction
+// prompts, score display, objective markers.
+pub mod hud_system;
