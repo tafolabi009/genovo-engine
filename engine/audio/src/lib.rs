@@ -29,6 +29,7 @@ pub mod audio_graph;
 pub mod backends;
 pub mod components;
 pub mod dsp;
+pub mod effects_advanced;
 pub mod midi;
 pub mod mixer;
 pub mod music;
@@ -62,4 +63,8 @@ pub use midi::{
     Scale, SynthVoice, Synthesizer, chord, chord_inversion, encode_vlq,
     frequency_to_note, interval_name, note_name, note_to_frequency,
     oscillator_sample, parse_note_name, scale, scale_multi_octave,
+};
+pub use effects_advanced::{
+    Complex, ConvolutionReverb, Limiter, PitchShifter, SpatialListener,
+    Spatializer3D, StereoWidener, fft, fft_convolve, fft_real, ifft_real,
 };

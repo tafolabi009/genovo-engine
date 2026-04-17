@@ -6,6 +6,7 @@
 //! protocol framing, state synchronization, game session management,
 //! and voice chat with mu-law codec, jitter buffering, and VAD.
 
+pub mod encryption;
 pub mod lobby;
 pub mod matchmaking;
 pub mod prediction;
@@ -62,4 +63,9 @@ pub use voice::{
     VoiceChannel, VoiceChannelType, VoiceChatError, VoiceChatManager, VoiceCodec,
     VoicePacket, VoicePlayerId, VoiceQuality, VoiceReceiver, VoiceTransmitter,
     mu_law_decode, mu_law_encode, mu_law_decode_block, mu_law_encode_block,
+};
+pub use encryption::{
+    EncryptionError, EncryptionResult, HandshakeState, KeyExchange, PacketEncryptor,
+    PacketIntegrity, PrivateKey, PublicKey, ReplayWindow, SecureChannel, SharedSecret,
+    U256, modpow_u256,
 };

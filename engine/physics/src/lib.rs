@@ -36,9 +36,13 @@
 //!   GearJoint, PulleyJoint, WeldJoint, DistanceJoint, MouseJoint
 //! - **Continuous collision detection** (`continuous_collision`): sphere/AABB/plane/triangle
 //!   sweep tests, conservative advancement, CCD settings
+//! - **Character physics** (`character_physics`): capsule-based character controller
+//!   with sweep tests, iterative collide-and-slide, step detection, ground queries,
+//!   slope handling, and moving platform tracking
 
 pub mod backends;
 pub mod buoyancy;
+pub mod character_physics;
 pub mod cloth;
 pub mod collision;
 pub mod components;
@@ -83,4 +87,9 @@ pub use motor_joint::{
     BodyState, GenericJoint, JointAxis, JointAxisConfig, MotorJoint, MotorMode,
     PdController, PrismaticJoint, RopeJoint, SuspensionSettings, WheelJoint,
     WheelMotorSettings,
+};
+pub use character_physics::{
+    CharacterCapsule, CharacterCollision, CharacterControllerManager, CharacterHandle,
+    CharacterMoveResult, GroundInfo, GroundQuery, MovingPlatformTracker, PhysicsCharacter,
+    PlatformHandle, StaticCollider, SurfaceMaterial, SweepHit,
 };
