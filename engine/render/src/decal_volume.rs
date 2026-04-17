@@ -1093,13 +1093,13 @@ impl DecalVolumeManager {
         // Pool not full yet -- append.
         if self.decals.len() < self.max_capacity {
             let idx = self.decals.len();
-            let gen = 1u32;
-            decal.generation = gen;
+            let generation = 1u32;
+            decal.generation = generation;
             decal.alive = true;
             self.decals.push(decal);
-            self.generations.push(gen);
+            self.generations.push(generation);
             self.alive_count += 1;
-            return DecalVolumeId::new(idx as u32, gen);
+            return DecalVolumeId::new(idx as u32, generation);
         }
 
         // Pool is full -- recycle the oldest alive decal.

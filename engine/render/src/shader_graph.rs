@@ -612,10 +612,10 @@ impl NodeKind {
                 let uv = get_input("uv");
                 format!(
                     "    let {p}_color = textureSample(t_{p}, s_{p}, {uv});\n\
-                     \    let {p}_r = {p}_color.r;\n\
-                     \    let {p}_g = {p}_color.g;\n\
-                     \    let {p}_b = {p}_color.b;\n\
-                     \    let {p}_a = {p}_color.a;\n",
+                         let {p}_r = {p}_color.r;\n\
+                         let {p}_g = {p}_color.g;\n\
+                         let {p}_b = {p}_color.b;\n\
+                         let {p}_a = {p}_color.a;\n",
                     p = output_prefix,
                     uv = uv,
                 )
@@ -662,12 +662,12 @@ impl NodeKind {
                 let center = get_input("center");
                 format!(
                     "    let {p}_cos = cos({angle});\n\
-                     \    let {p}_sin = sin({angle});\n\
-                     \    let {p}_centered = {uv} - {center};\n\
-                     \    let {p}_uv = vec2<f32>(\n\
-                     \        {p}_centered.x * {p}_cos - {p}_centered.y * {p}_sin,\n\
-                     \        {p}_centered.x * {p}_sin + {p}_centered.y * {p}_cos\n\
-                     \    ) + {center};\n",
+                         let {p}_sin = sin({angle});\n\
+                         let {p}_centered = {uv} - {center};\n\
+                         let {p}_uv = vec2<f32>(\n\
+                             {p}_centered.x * {p}_cos - {p}_centered.y * {p}_sin,\n\
+                             {p}_centered.x * {p}_sin + {p}_centered.y * {p}_cos\n\
+                         ) + {center};\n",
                     p = output_prefix,
                     uv = uv,
                     angle = angle,
@@ -681,7 +681,7 @@ impl NodeKind {
                 let view_dir = get_input("view_dir");
                 format!(
                     "    let {p}_offset = {view_dir}.xy / max({view_dir}.z, 0.001) * ({height} * {scale});\n\
-                     \    let {p}_uv = {uv} - {p}_offset;\n",
+                         let {p}_uv = {uv} - {p}_offset;\n",
                     p = output_prefix,
                     uv = uv,
                     height = height,
@@ -695,11 +695,11 @@ impl NodeKind {
                 let sharp = get_input("sharpness");
                 format!(
                     "    let {p}_blend = pow(abs({nor}), vec3<f32>({sharp}));\n\
-                     \    let {p}_blend_norm = {p}_blend / ({p}_blend.x + {p}_blend.y + {p}_blend.z);\n\
-                     \    let {p}_xy = textureSample(t_{p}, s_{p}, {pos}.xy) * {p}_blend_norm.z;\n\
-                     \    let {p}_xz = textureSample(t_{p}, s_{p}, {pos}.xz) * {p}_blend_norm.y;\n\
-                     \    let {p}_yz = textureSample(t_{p}, s_{p}, {pos}.yz) * {p}_blend_norm.x;\n\
-                     \    let {p}_color = {p}_xy + {p}_xz + {p}_yz;\n",
+                         let {p}_blend_norm = {p}_blend / ({p}_blend.x + {p}_blend.y + {p}_blend.z);\n\
+                         let {p}_xy = textureSample(t_{p}, s_{p}, {pos}.xy) * {p}_blend_norm.z;\n\
+                         let {p}_xz = textureSample(t_{p}, s_{p}, {pos}.xz) * {p}_blend_norm.y;\n\
+                         let {p}_yz = textureSample(t_{p}, s_{p}, {pos}.yz) * {p}_blend_norm.x;\n\
+                         let {p}_color = {p}_xy + {p}_xz + {p}_yz;\n",
                     p = output_prefix,
                     pos = pos,
                     nor = nor,
@@ -755,13 +755,13 @@ impl NodeKind {
                 let alpha = get_input("alpha");
                 format!(
                     "    // PBR Output\n\
-                     \    let pbr_albedo = {albedo};\n\
-                     \    let pbr_metallic = {metallic};\n\
-                     \    let pbr_roughness = {roughness};\n\
-                     \    let pbr_normal = {normal};\n\
-                     \    let pbr_emissive = {emissive};\n\
-                     \    let pbr_ao = {ao};\n\
-                     \    let pbr_alpha = {alpha};\n",
+                         let pbr_albedo = {albedo};\n\
+                         let pbr_metallic = {metallic};\n\
+                         let pbr_roughness = {roughness};\n\
+                         let pbr_normal = {normal};\n\
+                         let pbr_emissive = {emissive};\n\
+                         let pbr_ao = {ao};\n\
+                         let pbr_alpha = {alpha};\n",
                     albedo = albedo,
                     metallic = metallic,
                     roughness = roughness,
@@ -1256,7 +1256,7 @@ fn topological_sort(graph: &ShaderGraph) -> Result<Vec<NodeId>, Vec<GraphError>>
 
     let mut queue: Vec<NodeId> = in_degree
         .iter()
-        .filter(|(_, &deg)| deg == 0)
+        .filter(|(_, deg)| **deg == 0)
         .map(|(&id, _)| id)
         .collect();
     queue.sort(); // Deterministic order.
@@ -1279,7 +1279,7 @@ fn topological_sort(graph: &ShaderGraph) -> Result<Vec<NodeId>, Vec<GraphError>>
     if sorted.len() != graph.nodes.len() {
         let cycle_nodes: Vec<NodeId> = in_degree
             .iter()
-            .filter(|(_, &deg)| deg > 0)
+            .filter(|(_, deg)| **deg > 0)
             .map(|(&id, _)| id)
             .collect();
         return Err(vec![GraphError::Cycle(cycle_nodes)]);
@@ -1340,64 +1340,64 @@ pub fn compile_to_wgsl(graph: &ShaderGraph) -> Result<String, Vec<GraphError>> {
     // ----- Struct definitions -----
     wgsl.push_str(
         "struct VertexInput {\n\
-         \    @location(0) position: vec3<f32>,\n\
-         \    @location(1) normal: vec3<f32>,\n\
-         \    @location(2) tangent: vec4<f32>,\n\
-         \    @location(3) uv0: vec2<f32>,\n\
-         \    @location(4) uv1: vec2<f32>,\n\
-         \    @location(5) vertex_color: vec4<f32>,\n\
+             @location(0) position: vec3<f32>,\n\
+             @location(1) normal: vec3<f32>,\n\
+             @location(2) tangent: vec4<f32>,\n\
+             @location(3) uv0: vec2<f32>,\n\
+             @location(4) uv1: vec2<f32>,\n\
+             @location(5) vertex_color: vec4<f32>,\n\
          };\n\n",
     );
 
     wgsl.push_str(
         "struct VertexOutput {\n\
-         \    @builtin(position) clip_position: vec4<f32>,\n\
-         \    @location(0) world_position: vec3<f32>,\n\
-         \    @location(1) world_normal: vec3<f32>,\n\
-         \    @location(2) world_tangent: vec4<f32>,\n\
-         \    @location(3) uv0: vec2<f32>,\n\
-         \    @location(4) uv1: vec2<f32>,\n\
-         \    @location(5) vertex_color: vec4<f32>,\n\
+             @builtin(position) clip_position: vec4<f32>,\n\
+             @location(0) world_position: vec3<f32>,\n\
+             @location(1) world_normal: vec3<f32>,\n\
+             @location(2) world_tangent: vec4<f32>,\n\
+             @location(3) uv0: vec2<f32>,\n\
+             @location(4) uv1: vec2<f32>,\n\
+             @location(5) vertex_color: vec4<f32>,\n\
          };\n\n",
     );
 
     // ----- Uniform bindings -----
     wgsl.push_str(
         "struct CameraUniform {\n\
-         \    view: mat4x4<f32>,\n\
-         \    projection: mat4x4<f32>,\n\
-         \    view_projection: mat4x4<f32>,\n\
-         \    inverse_view: mat4x4<f32>,\n\
-         \    inverse_projection: mat4x4<f32>,\n\
-         \    position: vec4<f32>,\n\
-         \    screen_size: vec2<f32>,\n\
-         \    near_far: vec2<f32>,\n\
+             view: mat4x4<f32>,\n\
+             projection: mat4x4<f32>,\n\
+             view_projection: mat4x4<f32>,\n\
+             inverse_view: mat4x4<f32>,\n\
+             inverse_projection: mat4x4<f32>,\n\
+             position: vec4<f32>,\n\
+             screen_size: vec2<f32>,\n\
+             near_far: vec2<f32>,\n\
          };\n\n",
     );
 
     wgsl.push_str(
         "struct Globals {\n\
-         \    time: f32,\n\
-         \    delta_time: f32,\n\
-         \    frame_count: u32,\n\
-         \    _padding: u32,\n\
+             time: f32,\n\
+             delta_time: f32,\n\
+             frame_count: u32,\n\
+             _padding: u32,\n\
          };\n\n",
     );
 
     wgsl.push_str(
         "struct ModelUniform {\n\
-         \    model: mat4x4<f32>,\n\
-         \    normal_matrix: mat4x4<f32>,\n\
+             model: mat4x4<f32>,\n\
+             normal_matrix: mat4x4<f32>,\n\
          };\n\n",
     );
 
     // PBR output struct for the fragment shader return.
     wgsl.push_str(
         "struct FragmentOutput {\n\
-         \    @location(0) albedo: vec4<f32>,\n\
-         \    @location(1) normal: vec4<f32>,\n\
-         \    @location(2) metallic_roughness_ao: vec4<f32>,\n\
-         \    @location(3) emissive: vec4<f32>,\n\
+             @location(0) albedo: vec4<f32>,\n\
+             @location(1) normal: vec4<f32>,\n\
+             @location(2) metallic_roughness_ao: vec4<f32>,\n\
+             @location(3) emissive: vec4<f32>,\n\
          };\n\n",
     );
 
@@ -1433,19 +1433,19 @@ pub fn compile_to_wgsl(graph: &ShaderGraph) -> Result<String, Vec<GraphError>> {
     wgsl.push_str(
         "@vertex\n\
          fn vs_main(in: VertexInput) -> VertexOutput {\n\
-         \    var out: VertexOutput;\n\
-         \    let world_pos = model.model * vec4<f32>(in.position, 1.0);\n\
-         \    out.clip_position = camera.view_projection * world_pos;\n\
-         \    out.world_position = world_pos.xyz;\n\
-         \    out.world_normal = normalize((model.normal_matrix * vec4<f32>(in.normal, 0.0)).xyz);\n\
-         \    out.world_tangent = vec4<f32>(\n\
-         \        normalize((model.normal_matrix * vec4<f32>(in.tangent.xyz, 0.0)).xyz),\n\
-         \        in.tangent.w\n\
-         \    );\n\
-         \    out.uv0 = in.uv0;\n\
-         \    out.uv1 = in.uv1;\n\
-         \    out.vertex_color = in.vertex_color;\n\
-         \    return out;\n\
+             var out: VertexOutput;\n\
+             let world_pos = model.model * vec4<f32>(in.position, 1.0);\n\
+             out.clip_position = camera.view_projection * world_pos;\n\
+             out.world_position = world_pos.xyz;\n\
+             out.world_normal = normalize((model.normal_matrix * vec4<f32>(in.normal, 0.0)).xyz);\n\
+             out.world_tangent = vec4<f32>(\n\
+                 normalize((model.normal_matrix * vec4<f32>(in.tangent.xyz, 0.0)).xyz),\n\
+                 in.tangent.w\n\
+             );\n\
+             out.uv0 = in.uv0;\n\
+             out.uv1 = in.uv1;\n\
+             out.vertex_color = in.vertex_color;\n\
+             return out;\n\
          }\n\n",
     );
 
@@ -1510,11 +1510,11 @@ pub fn compile_to_wgsl(graph: &ShaderGraph) -> Result<String, Vec<GraphError>> {
     // ----- Fragment output -----
     wgsl.push_str(
         "    var out: FragmentOutput;\n\
-         \    out.albedo = vec4<f32>(pbr_albedo, pbr_alpha);\n\
-         \    out.normal = vec4<f32>(pbr_normal * 0.5 + 0.5, 1.0);\n\
-         \    out.metallic_roughness_ao = vec4<f32>(pbr_metallic, pbr_roughness, pbr_ao, 1.0);\n\
-         \    out.emissive = vec4<f32>(pbr_emissive, 1.0);\n\
-         \    return out;\n\
+             out.albedo = vec4<f32>(pbr_albedo, pbr_alpha);\n\
+             out.normal = vec4<f32>(pbr_normal * 0.5 + 0.5, 1.0);\n\
+             out.metallic_roughness_ao = vec4<f32>(pbr_metallic, pbr_roughness, pbr_ao, 1.0);\n\
+             out.emissive = vec4<f32>(pbr_emissive, 1.0);\n\
+             return out;\n\
          }\n",
     );
 

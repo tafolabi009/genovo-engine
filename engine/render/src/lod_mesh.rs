@@ -1421,12 +1421,12 @@ mod tests {
     #[test]
     fn test_lod_generator_sphere() {
         let mesh = create_sphere(16, 12);
-        let gen = LodGenerator::new();
+        let lod_gen = LodGenerator::new();
         let configs = vec![
             LodConfig::from_ratio(0.5),
             LodConfig::from_ratio(0.25),
         ];
-        let lods = gen.generate_lods(&mesh, &configs);
+        let lods = lod_gen.generate_lods(&mesh, &configs);
 
         assert_eq!(lods.len(), 2);
         // Each LOD should have fewer triangles than the previous.
@@ -1442,8 +1442,8 @@ mod tests {
     #[test]
     fn test_lod_generator_default_lods() {
         let mesh = create_sphere(16, 12);
-        let gen = LodGenerator::new();
-        let lods = gen.generate_default_lods(&mesh);
+        let lod_gen = LodGenerator::new();
+        let lods = lod_gen.generate_default_lods(&mesh);
 
         assert_eq!(lods.len(), DEFAULT_LOD_LEVELS);
         // Monotonically decreasing triangle count.

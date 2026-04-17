@@ -786,10 +786,11 @@ impl AbilityBar {
     pub fn interrupt_all(&mut self) -> Vec<AbilityEvent> {
         let mut events = Vec::new();
         for slot in &mut self.slots {
-            if let Some(ability) = &slot.ability {
+            let ability_id = slot.ability.as_ref().map(|a| a.id.clone());
+            if let Some(aid) = ability_id {
                 if slot.interrupt() {
                     events.push(AbilityEvent::Interrupted {
-                        ability_id: ability.id.clone(),
+                        ability_id: aid,
                     });
                 }
             }

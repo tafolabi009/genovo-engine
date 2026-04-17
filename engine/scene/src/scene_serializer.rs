@@ -214,7 +214,7 @@ fn escape_json(s: &str) -> String {
 // ---------------------------------------------------------------------------
 
 /// A serialized component -- its type name and field values.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SerializedComponent {
     /// The component type name.
     pub type_name: String,

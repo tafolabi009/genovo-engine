@@ -558,15 +558,16 @@ impl LayerStack {
                 }
 
                 LayerBlendMode::Additive => {
-                    if let Some(ref additive) = layer.additive_clip {
-                        let duration = additive.duration;
-                        layer.advance(dt, duration);
-                        let deltas = additive.sample(layer.playback_time, bone_count);
-
-                        if let Some(ref mask) = layer.mask {
-                            result = apply_additive_masked(&result, &deltas, layer.weight, mask);
-                        } else {
-                            result = apply_additive(&result, &deltas, layer.weight);
+                    let duration = layer.additive_clip.as_ref().map(|a| a.duration);
+                    if let Some(dur) = duration {
+                        layer.advance(dt, dur);
+                        if let Some(ref additive) = layer.additive_clip {
+                            let deltas = additive.sample(layer.playback_time, bone_count);
+                            if let Some(ref mask) = layer.mask {
+                                result = apply_additive_masked(&result, &deltas, layer.weight, mask);
+                            } else {
+                                result = apply_additive(&result, &deltas, layer.weight);
+                            }
                         }
                     }
                 }
