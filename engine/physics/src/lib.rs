@@ -48,6 +48,7 @@ pub mod destruction;
 pub mod dynamics;
 pub mod fluid;
 pub mod interface;
+pub mod motor_joint;
 pub mod ragdoll;
 pub mod rope;
 pub mod softbody;
@@ -78,3 +79,8 @@ pub use ragdoll::{RagdollComponent, RagdollDefinition, RagdollInstance, RagdollS
 pub use rope::{ChainSimulation, RopeComponent, RopeSimulation, RopeSystem};
 pub use softbody::{SoftBody, SoftBodyComponent, SoftBodySettings, SoftBodySystem};
 pub use vehicle::{VehicleComponent, VehicleConfig, VehicleController, VehicleSystem};
+pub use motor_joint::{
+    BodyState, GenericJoint, JointAxis, JointAxisConfig, MotorJoint, MotorMode,
+    PdController, PrismaticJoint, RopeJoint, SuspensionSettings, WheelJoint,
+    WheelMotorSettings,
+};

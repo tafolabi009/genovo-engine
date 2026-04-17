@@ -10,6 +10,7 @@
 
 pub mod lod_manager;
 pub mod level;
+pub mod occlusion;
 pub mod partition;
 pub mod spline;
 pub mod streaming;
@@ -25,6 +26,11 @@ pub use partition::{
 };
 pub use spline::{
     SplineComponent, SplineFollower, SplineMesh, SplinePath, SplinePoint, SplineScatter,
+};
+pub use occlusion::{
+    HierarchicalZBuffer, OcclusionBuffer, OcclusionBufferStats, OcclusionCamera,
+    OcclusionCullStats, OcclusionCuller, OccluderComponent, OccluderEntry, Portal,
+    PortalOcclusion, PortalOcclusionConfig, PortalPlane, RenderQueueFilter, Room, RoomId,
 };
 pub use streaming::{
     StreamRequest, StreamRequestPriority, StreamingManager, StreamingStats, CellTransitionState,

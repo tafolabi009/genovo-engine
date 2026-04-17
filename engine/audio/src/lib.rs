@@ -29,6 +29,7 @@ pub mod audio_graph;
 pub mod backends;
 pub mod components;
 pub mod dsp;
+pub mod midi;
 pub mod mixer;
 pub mod music;
 pub mod spatial;
@@ -54,4 +55,11 @@ pub use ambience::{AmbienceComponent, AmbienceManager, AmbienceSystem, AmbienceZ
 pub use audio_graph::{AudioGraph, AudioGraphBuilder, AudioNode, NodeHandle};
 pub use music::{
     MusicComponent, MusicLayerSystem, MusicPlayer, MusicState, MusicSystem, MusicTrack, Playlist,
+};
+pub use midi::{
+    ADSREnvelope, Chord, EnvelopeStage, EnvelopeState, MidiEvent, MidiFileParser,
+    MidiFormat, MidiHeader, MidiNote, MidiParseError, MidiSequence, Oscillator,
+    Scale, SynthVoice, Synthesizer, chord, chord_inversion, encode_vlq,
+    frequency_to_note, interval_name, note_name, note_to_frequency,
+    oscillator_sample, parse_note_name, scale, scale_multi_octave,
 };

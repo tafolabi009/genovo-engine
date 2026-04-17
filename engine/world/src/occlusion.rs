@@ -90,6 +90,17 @@ impl AABB {
         d.x * d.y * d.z
     }
 
+    /// Returns true if a point is inside this AABB.
+    #[inline]
+    pub fn contains_point(&self, point: Vec3) -> bool {
+        point.x >= self.min.x
+            && point.x <= self.max.x
+            && point.y >= self.min.y
+            && point.y <= self.max.y
+            && point.z >= self.min.z
+            && point.z <= self.max.z
+    }
+
     /// Returns the 8 corners of the AABB.
     pub fn corners(&self) -> [Vec3; 8] {
         [

@@ -3,7 +3,8 @@
 //! Provides multiplayer networking infrastructure including state replication,
 //! client-side prediction with rollback, pluggable network transports
 //! (UDP, WebSocket), remote procedure calls, lobby management, matchmaking,
-//! protocol framing, state synchronization, and game session management.
+//! protocol framing, state synchronization, game session management,
+//! and voice chat with mu-law codec, jitter buffering, and VAD.
 
 pub mod lobby;
 pub mod matchmaking;
@@ -14,6 +15,7 @@ pub mod rpc;
 pub mod session;
 pub mod sync;
 pub mod transport;
+pub mod voice;
 
 pub use prediction::{
     EntityHitbox, Hit, InputBuffer, InterpolationBuffer, LagCompensation,
@@ -53,4 +55,11 @@ pub use sync::{
 pub use session::{
     GameSession, LeaveReason, PlayerSession, PlayerState, SessionConfig,
     SessionEvent, SessionState,
+};
+pub use voice::{
+    ComfortNoiseGenerator, JitterBuffer, JitterBufferStats,
+    PacketLossConcealer, SimpleCodec, VoiceActivityDetector, VoiceCapture,
+    VoiceChannel, VoiceChannelType, VoiceChatError, VoiceChatManager, VoiceCodec,
+    VoicePacket, VoicePlayerId, VoiceQuality, VoiceReceiver, VoiceTransmitter,
+    mu_law_decode, mu_law_encode, mu_law_decode_block, mu_law_encode_block,
 };

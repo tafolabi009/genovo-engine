@@ -39,6 +39,8 @@ pub mod shader;
 pub mod particles;
 pub mod trails;
 pub mod decals;
+pub mod decal_volume;
+pub mod foliage;
 pub mod volumetrics;
 
 // PBR rendering pipeline modules.
