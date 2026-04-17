@@ -135,7 +135,7 @@ impl LocaleManagerV2 {
         self.events.push(LocaleEvent::TableLoaded(locale));
     }
 
-    pub fn get_string(&self, key: &str) -> &str {
+    pub fn get_string<'a>(&'a self, key: &'a str) -> &'a str {
         if let Some(table) = self.tables.get(&self.current_locale) { if let Some(v) = table.get(key) { return v; } }
         if let Some(table) = self.tables.get(&self.fallback_locale) { if let Some(v) = table.get(key) { return v; } }
         key

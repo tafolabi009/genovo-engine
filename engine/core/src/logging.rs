@@ -227,7 +227,7 @@ impl LogFormatter {
         parts.push(record.message.clone());
 
         if self.show_source {
-            if let (Some(ref file), Some(line)) = (&record.file, record.line) {
+            if let (Some(file), Some(line)) = (&record.file, record.line) {
                 parts.push(format!("({}:{})", file, line));
             }
         }
@@ -305,7 +305,7 @@ impl LogFormatter {
             json.push_str(&format!(",\"thread\":\"{}\"", escape_json(thread_name)));
         }
 
-        if let (Some(ref file), Some(line)) = (&record.file, record.line) {
+        if let (Some(file), Some(line)) = (&record.file, record.line) {
             json.push_str(&format!(",\"file\":\"{}\",\"line\":{}", escape_json(file), line));
         }
 

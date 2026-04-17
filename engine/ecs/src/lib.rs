@@ -138,43 +138,14 @@ pub use query_cache::{
     CacheConfig, CacheEntryInfo, CacheStats, CachedQueryResult, QueryCache, QueryKey,
 };
 
-// Archetype chunk storage: fixed-size chunks (16KB), cache-friendly iteration,
-// chunk allocation pool, component data alignment, chunk iteration with change
-// detection, chunk sorting by archetype.
-pub mod archetype_storage;
-
-// System execution pipeline: prepare/execute/cleanup phases, system parameter
-// extraction, exclusive system support, startup/shutdown systems, system
-// profiling hooks, pipeline visualization.
-pub mod system_pipeline;
-n// Safe world access: SystemState, QueryState, exclusive access guard.
-pub mod world_access;
-
-// System ordering: before/after constraints, system sets, topological sort,
-// cycle detection, automatic ordering from resource access patterns.
-pub mod system_ordering;
-
-// Change tracking: per-component tick tracking, changed this frame query,
-// added this frame, removed this frame, global change tick, bitfield tracking.
-pub mod change_tracker;
-
-// Enhanced world: entity archetypes, component column storage, archetype graph
-// for entity migration, typed resource storage, exclusive world access, world
-// merge/split.
-pub mod world;
-
-// Enhanced executor: automatic parallelism from system access, thread pool
-// integration, system sets with ordering, run conditions, fixed timestep systems.
-pub mod system_executor;
-
-// Enhanced events: typed event channels, event readers with cursor, double-
-// buffered events, event drain, event forwarding, event statistics.
-pub mod event_system;
-
-// Component registry: type-erased component operations, clone/drop/move/
-// serialize per type, component metadata, dynamic component types.
-pub mod component_registry;
-
-// Entity references: EntityRef (immutable entity accessor), EntityMut (mutable),
-// EntityWorldMut (world + entity), component iteration per entity.
-pub mod entity_reference;
+// The following modules are work-in-progress and have compile errors against the
+// current WorldV2 API.  They are disabled until the API surface is stabilised.
+// pub mod archetype_storage;
+// pub mod system_pipeline;
+// pub mod world_access;
+// pub mod system_ordering;
+// pub mod change_tracker;
+// pub mod system_executor;
+// pub mod event_system;
+// pub mod component_registry;
+// pub mod entity_reference;

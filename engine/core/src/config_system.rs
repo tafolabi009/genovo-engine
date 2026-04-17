@@ -324,7 +324,7 @@ impl ConfigParser {
                 let section_table = root
                     .entry(section.clone())
                     .or_insert_with(|| ConfigValue::Table(BTreeMap::new()));
-                if let ConfigValue::Table(ref mut table) = section_table {
+                if let ConfigValue::Table(table) = section_table {
                     table.insert(key, value);
                 }
             } else {
@@ -1017,7 +1017,7 @@ impl ConfigSystem {
                 .data
                 .entry(parts[0].to_string())
                 .or_insert_with(|| ConfigValue::Table(BTreeMap::new()));
-            if let ConfigValue::Table(ref mut table) = section {
+            if let ConfigValue::Table(table) = section {
                 table.insert(parts[1].to_string(), value.clone());
             }
         }
@@ -1046,7 +1046,7 @@ impl ConfigSystem {
         if parts.len() == 1 {
             self.data.remove(parts[0])
         } else {
-            if let Some(ConfigValue::Table(ref mut table)) = self.data.get_mut(parts[0]) {
+            if let Some(ConfigValue::Table(table)) = self.data.get_mut(parts[0]) {
                 table.remove(parts[1])
             } else {
                 None

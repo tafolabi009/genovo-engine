@@ -263,7 +263,7 @@ impl FeatureFlags {
     pub fn enabled_features(&self) -> Vec<&str> {
         self.flags
             .iter()
-            .filter(|(_, &v)| v)
+            .filter(|(_, v)| **v)
             .map(|(k, _)| k.as_str())
             .collect()
     }

@@ -1,6 +1,11 @@
 //! Enhanced ECS World with archetype graph, column storage, typed resources,
 //! exclusive world access, and world merge/split operations.
 
+/// Type alias: the primary `World` used by the engine is `WorldV2`.
+pub type World = WorldV2;
+/// Type alias: `Entity` maps to `EntityV2`.
+pub type Entity = EntityV2;
+
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::fmt;
@@ -58,10 +63,10 @@ impl EntityAllocatorV2 {
             let idx = self.next_fresh; self.next_fresh += 1;
             self.generations.push(0); self.alive.push(false); idx
         };
-        let gen = self.generations[index as usize];
+        let generation = self.generations[index as usize];
         self.alive[index as usize] = true;
         self.live_count += 1;
-        EntityV2::new(index, gen)
+        EntityV2::new(index, generation)
     }
 
     pub fn deallocate(&mut self, entity: EntityV2) -> bool {
