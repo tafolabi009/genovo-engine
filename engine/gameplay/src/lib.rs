@@ -17,12 +17,20 @@
 //! | [`quest_system`]         | Quests, objectives, rewards, and journals         |
 //! | [`dialogue`]             | Branching dialogue trees with conditions          |
 //! | [`spawner`]              | Interval and wave-based entity spawning           |
+//! | [`ai_director`]          | Dynamic difficulty and AI-driven pacing           |
+//! | [`progression`]          | XP, leveling, stats, skill trees, achievements    |
+//! | [`ability_system`]       | Abilities, cooldowns, combos, and effect dispatch |
+//! | [`interaction`]          | World interaction: doors, pickups, switches       |
 
+pub mod ability_system;
+pub mod ai_director;
 pub mod camera_controller;
 pub mod character_controller;
 pub mod damage_system;
 pub mod dialogue;
+pub mod interaction;
 pub mod inventory;
+pub mod progression;
 pub mod quest_system;
 pub mod spawner;
 
@@ -92,4 +100,45 @@ pub use dialogue::{
 pub use spawner::{
     EnemyGroup, SpawnPoint, SpawnProperty, SpawnRequest, Spawner, WaveDefinition, WaveSpawner,
     WaveState,
+};
+
+// ---------------------------------------------------------------------------
+// Re-exports: ai_director
+// ---------------------------------------------------------------------------
+
+pub use ai_director::{
+    AIDirector, AmbientEventKind, DesiredIntensity, DifficultyMultiplier, DirectorEvent,
+    DirectorLog, IntensityState, PacingConfig, PacingCurve, PacingWaypoint, PlayerStats,
+    SpawnDirective, StateDuration, TensionTracker,
+};
+
+// ---------------------------------------------------------------------------
+// Re-exports: progression
+// ---------------------------------------------------------------------------
+
+pub use progression::{
+    Achievement, AchievementCondition, AchievementReward, AchievementSystem,
+    AchievementUnlockedEvent, CommonStat, ExperienceRecord, ExperienceSystem, LevelUpEvent,
+    ModifierDuration, ModifierKind, PlayerProgressState, SkillEffect, SkillNode, SkillTree,
+    SkillTreeError, Stat, StatBlock, StatId, StatModifier, XPCurveKind, XPTable,
+};
+
+// ---------------------------------------------------------------------------
+// Re-exports: ability_system
+// ---------------------------------------------------------------------------
+
+pub use ability_system::{
+    Ability, AbilityBar, AbilityComponent, AbilityDamageType, AbilityEffect, AbilityEvent,
+    AbilityRegistry, AbilitySlot, AreaShape, CastState, ComboDefinition, ComboResult,
+    ComboStep, ComboTracker, CrowdControlType, ResourcePool, ResourceType, TargetingMode,
+    ABILITY_BAR_SIZE,
+};
+
+// ---------------------------------------------------------------------------
+// Re-exports: interaction
+// ---------------------------------------------------------------------------
+
+pub use interaction::{
+    DialogueTrigger, Door, Interactable, InteractionEvent, InteractionSystem, InteractionType,
+    Pickup, Switch,
 };

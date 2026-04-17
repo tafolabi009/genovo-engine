@@ -77,6 +77,11 @@ pub mod material_system;
 pub mod shader_graph;
 pub mod texture_streaming;
 
+// LOD mesh generation, billboard impostors, and instanced rendering.
+pub mod lod_mesh;
+pub mod billboard;
+pub mod instanced_renderer;
+
 // ---------------------------------------------------------------------------
 // Re-exports
 // ---------------------------------------------------------------------------
