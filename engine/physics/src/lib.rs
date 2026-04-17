@@ -187,6 +187,55 @@ pub mod contact_solver;
 // Polytope Algorithm) for penetration depth, GJK distance query, Minkowski
 // portal refinement, margin-based collision (GJK+EPA with margins).
 pub mod collision_geometry;
+n// Sweep-and-prune broadphase: sorted endpoint lists per axis, incremental
+// update, pair management with add/remove callbacks, collision layers.
+pub mod broadphase_sap;
+
+// Narrowphase collision: dispatch by shape pair, contact manifolds,
+// persistent contacts with caching, GJK+EPA fallback.
+pub mod narrowphase;
+
+// Island-based solving: union-find grouping, per-island sequential impulse,
+// skip sleeping islands, warm-starting.
+pub mod solver_islands;
+
+// Production GJK+EPA v2: Minkowski difference, simplex cases
+// (point/line/triangle/tetrahedron), EPA polytope expansion, contact normal
+// and depth, support function dispatch, margin-based collision.
+pub mod gjk_epa;
+
+// Constraint framework: generic constraint interface, velocity constraints,
+// position constraints, pre-step (compute effective mass), solve (apply
+// impulse), warm start, sequential impulse solver.
+pub mod constraint_system;
+
+// Body lifecycle: create/destroy bodies with generational handles, body pool,
+// activation/deactivation (sleeping), body queries, integration, iteration.
+pub mod body_manager;
+
+// ---------------------------------------------------------------------------
+// Additional physics subsystems (batch 3)
+// ---------------------------------------------------------------------------
+
+// Enhanced collision: persistent contact manifold, contact reduction,
+// speculative contacts, one-shot manifold generation, warm starting cache.
+pub mod collision_detection;
+
+// Enhanced soft body: position-based dynamics, shape matching, volume
+// preservation, attachment to rigid bodies, cutting/tearing, GPU simulation.
+pub mod soft_body;
+
+// Physics debug rendering v2: contact points with normals, constraint limits,
+// body velocity arrows, sleep state indicators, broadphase cells.
+pub mod physics_debug;
+
+// World queries: closest body, bodies in AABB, ray vs specific body,
+// shape vs shape distance, time of impact.
+pub mod physics_world_query;
+
+// Enhanced solver: position-level constraints, XPBD, compliance matrix,
+// small-angle approximation, stable stacking.
+pub mod constraint_solver;
 
 // Re-exports for ergonomic top-level access.
 pub use collision::{

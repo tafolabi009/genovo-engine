@@ -99,10 +99,21 @@ pub mod editor_shortcuts;
 // recent projects, recently opened files, editor theme selection, viewport
 // settings, grid settings.
 pub mod editor_preferences;
+n// 3D transform gizmo: translate/rotate/scale handles, axis picking,
+// plane picking, delta computation from mouse drag.
+pub mod gizmo_renderer;
+
+// Editor viewport: scene renderer integration, camera controls,
+// selection highlighting, grid overlay.
+pub mod viewport_renderer;
 
 // World/level editor: multi-level editing, level streaming setup, world bounds
 // visualization, level connection editor.
 pub mod world_editor;
+
+// Enhanced hierarchy: drag-drop reparenting, multi-select, search/filter,
+// visibility/lock toggles, context menu, inline rename, expand/collapse.
+pub mod scene_hierarchy;
 
 // Enhanced material editor: node graph for materials, real-time preview sphere,
 // material parameter animation, material comparison.

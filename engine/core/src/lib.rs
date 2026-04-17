@@ -181,6 +181,14 @@ pub mod logging;
 // Resource lifecycle management: reference-counted resources, dependency
 // tracking, unload when refcount=0, resource reload, resource events
 // (loaded/unloaded/error), resource statistics.
+// Asset references: typed handles, weak refs, load-on-demand,
+// dependency tracking, hot-reload notification.
+pub mod asset_ref;
+
+// Main engine loop: fixed timestep, variable render, frame pacing,
+// vsync, smoothing, spiral-of-death protection.
+pub mod engine_loop;
+
 pub mod resource_manager;
 
 // Platform detection: OS name/version, CPU model/cores/features, GPU info
@@ -188,10 +196,31 @@ pub mod resource_manager;
 // rate), storage info, build configuration (debug/release).
 pub mod platform_info;
 
+// Per-frame allocator: bump allocator reset each frame, typed allocation,
+// arena with destructor, frame-scoped collections (Vec, scratch buffer),
+// multi-frame ring buffer allocator.
+pub mod frame_allocator;
+
+// Engine-optimized HashMap: open addressing, Robin Hood hashing, power-of-2
+// sizing, FxHash (Fibonacci hashing), backward-shift deletion, FastHashSet.
+pub mod hash_map_fast;
+
 // Engine console commands: cvar system (typed console variables), command
 // registration with help text, argument parsing, autocomplete, cvar
 // persistence to config file, cvar change callbacks, built-in engine cvars.
 pub mod console_commands;
+
+// Engine configuration: rendering settings, physics settings, audio settings,
+// network settings, quality presets, per-platform defaults.
+pub mod engine_config;
+
+// Performance tracking: CPU/GPU frame time, per-system timing, memory usage,
+// allocation rate, GC pressure, performance budget system.
+pub mod performance_counters;
+
+// Command buffer pattern: deferred commands, command recording, command replay,
+// command serialization for networking, command undo.
+pub mod command_buffer;
 
 /// Unique identifier for engine objects.
 pub type ObjectId = uuid::Uuid;

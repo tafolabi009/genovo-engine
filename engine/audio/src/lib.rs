@@ -85,6 +85,15 @@ pub use voice_synthesis::{
     FormantParams, Phoneme, PhonemeLibrary, TextToPhoneme, VoiceEffect,
     VoiceSynthesizer,
 };
+// Enhanced mixer: submix groups, send/return routing, sidechain compression,
+// limiter on master, real-time spectrum analyzer, waveform display data.
+pub mod audio_mixer;
+
+// Enhanced spatial: HRTF with head model, room simulation (early reflections
+// + late reverb), distance attenuation curves, Doppler with velocity tracking,
+// occlusion via raycasts.
+pub mod audio_spatializer;
+
 // Audio playback manager: sound pool with priority, voice stealing (quietest/oldest/
 // farthest), sound categories, fade manager, crossfade, ducking, audio focus.
 pub mod audio_playback;
@@ -107,7 +116,15 @@ pub use audio_bus_mixer::{
     SendConfig, SnapshotCrossfade, VuMeter,
 };
 
+// Real reverb: Schroeder reverb with 4 comb + 2 allpass filters, early
+// reflections, late reverb, room size control, damping, pre-delay, mix,
+// stereo output with decorrelation, presets (hall, cathedral, cave, plate).
+pub mod reverb_processor;
+
 // Master audio engine: initialize audio device, manage all audio subsystems
 // (mixer, spatial, DSP, music, ambience), audio thread, audio update pipeline,
 // master volume, audio pause/resume, audio statistics.
 pub mod audio_engine;
+n// Audio listener: 3D position/orientation, velocity for Doppler,
+// multiple listeners (split-screen), listener priority.
+pub mod audio_listener;

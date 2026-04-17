@@ -156,6 +156,17 @@ pub mod object_pooling;
 // scope zoom, thermal/night vision overlays, underwater tint, death grayscale,
 // hit indicators on screen edges.
 pub mod camera_effects;
+n// Complete player controller: input processing, movement modes, camera,
+// interaction, inventory hotbar, HUD data, stamina, footsteps.
+pub mod player_controller;
+
+// Enhanced companion AI (v3): formation, combat support, healing,
+// callouts, abilities, loyalty, morale, commands.
+pub mod ai_companion_v3;
+
+// Multiplayer game framework: lobby, teams, rounds, scoreboard,
+// kill feed, match timer, game mode rules.
+pub mod multiplayer_game;
 
 // ---------------------------------------------------------------------------
 // Re-exports: character controller
@@ -451,6 +462,38 @@ pub use procedural_animation::{
     LeanLayer, LookAtConstraint, ProceduralAnimComponent, ProceduralAnimController,
     ProceduralWalkCycle, RecoilLayer, TailPhysics,
 };
+
+// Enhanced character: wall running, wall jumping, ledge grabbing, sliding,
+// dashing, double jump, ground pound, grapple hook, swimming with diving.
+pub mod character;
+
+// HUD/UI management: UI stack (push/pop screens), UI transitions,
+// UI input routing, UI scaling for different resolutions, safe area margins.
+pub mod ui_manager;
+
+// Game state machine: MainMenu, Loading, Playing, Paused, Cutscene,
+// GameOver, Victory, with state transitions and data passing.
+pub mod game_state;
+
+// Gameplay event system: typed events, event channels, event history,
+// event replay, event filtering, event statistics.
+pub mod event_system;
+
+// Gameplay physics materials: footstep sounds by surface, bullet impact
+// VFX by surface, slide friction by surface, bounce behavior.
+pub mod physics_materials_gameplay;
+
+// Animation state machine runtime: state transitions, blend parameters,
+// animation events, root motion extraction, state query, blend spaces.
+pub mod animation_controller;
+
+// Physics interaction: pick up objects, throw, push, pull, physics handles
+// (spring joint to hand), object inspection mode, grab mechanics.
+pub mod physics_interaction;
+
+// Game settings: graphics quality presets, audio settings, control bindings,
+// accessibility options, language selection, save/load settings.
+pub mod settings_system;
 
 // Comprehensive input: action/axis bindings, dead zone processing, input
 // smoothing, input recording/playback, virtual inputs (for AI), input device

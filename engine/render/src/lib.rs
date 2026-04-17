@@ -316,6 +316,30 @@ pub mod material_instance;
 // G-Buffer configuration: configurable format (thin/standard/extended),
 // encode/decode functions, octahedron normal mapping, bandwidth analysis.
 pub mod gbuffer_layout;
+n// Shadow map rendering: depth-only render pass, cascaded shadow maps,
+// cubemap shadows for point lights, PCF with Poisson disk, shadow atlas.
+pub mod shadow_renderer;
+
+// Skybox rendering: cubemap or procedural sky, fullscreen quad rendering,
+// HDR environment sampling, sun/moon/stars, atmosphere presets.
+pub mod skybox_renderer;
+
+// Post-process execution: chain of effects (bloom, tonemap, FXAA),
+// ping-pong render targets, final blit to screen, quality presets.
+pub mod post_process_runner;
+
+// Production frustum culling: extract planes from VP matrix, AABB test
+// against 6 planes, batch test with early-out, visible set output,
+// hierarchical octree culling, screen-size culling, temporal coherence.
+pub mod frustum_culling;
+
+// Texture lifecycle: create/destroy GPU textures, format conversion,
+// mipmap generation, texture pool, memory tracking, LRU eviction.
+pub mod texture_manager;
+
+// Uniform buffer management: dynamic uniform buffer with offset allocation,
+// per-frame reset, alignment handling, bind group caching, material UBOs.
+pub mod uniform_buffer;
 
 // ---------------------------------------------------------------------------
 // Additional rendering subsystems (batch 7)
@@ -323,7 +347,7 @@ pub mod gbuffer_layout;
 
 // Enhanced PBR: clearcoat, sheen, transmission, thin-film iridescence,
 // anisotropy direction map, subsurface color, specular tint, IOR control.
-pub mod pbr_v2;
+pub mod pbr;
 
 // Volumetric light shafts: froxel-based integration, scattering in
 // participating media, per-light volumetric contribution, temporal reprojection.
@@ -331,7 +355,7 @@ pub mod volumetric_lighting;
 
 // Enhanced terrain: virtual texturing, clipmap rendering, tessellation LOD,
 // procedural detail, snow accumulation, puddles from rain.
-pub mod terrain_rendering_v2;
+pub mod terrain_rendering;
 
 // Environment probes: capture cubemap at probe position, parallax correction,
 // probe blending by distance, real-time probe update scheduling.
@@ -343,7 +367,7 @@ pub mod mesh_generation;
 
 // Enhanced debug rendering: persistent shapes with duration, batched lines/
 // triangles, screen-space text labels, wire mesh, navmesh visualization.
-pub mod debug_renderer_v2;
+pub mod debug_renderer;
 
 // Shader management: shader program objects, uniform binding, texture slot
 // management, global shader parameters, shader warm-up, complexity metrics.

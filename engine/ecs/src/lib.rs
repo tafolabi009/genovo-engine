@@ -147,6 +147,16 @@ pub mod archetype_storage;
 // extraction, exclusive system support, startup/shutdown systems, system
 // profiling hooks, pipeline visualization.
 pub mod system_pipeline;
+n// Safe world access: SystemState, QueryState, exclusive access guard.
+pub mod world_access;
+
+// System ordering: before/after constraints, system sets, topological sort,
+// cycle detection, automatic ordering from resource access patterns.
+pub mod system_ordering;
+
+// Change tracking: per-component tick tracking, changed this frame query,
+// added this frame, removed this frame, global change tick, bitfield tracking.
+pub mod change_tracker;
 
 // Enhanced world: entity archetypes, component column storage, archetype graph
 // for entity migration, typed resource storage, exclusive world access, world

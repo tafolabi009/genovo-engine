@@ -107,5 +107,14 @@ pub enum TerrainError {
     },
 }
 
+// Terrain heightfield collision: ray vs heightfield (DDA), sphere vs
+// heightfield, AABB vs heightfield, per-triangle normal, contact points,
+// material queries per cell, hole support.
+pub mod terrain_collision;
+
 /// Convenience alias for terrain results.
+// GPU terrain rendering: heightmap texture, clipmap vertex buffer,
+// tessellation, material splatting in shader, fog.
+pub mod terrain_renderer_gpu;
+
 pub type TerrainResult<T> = Result<T, TerrainError>;

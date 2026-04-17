@@ -82,6 +82,38 @@ pub mod ai_debug;
 // interruption priority, dialogue cooldown, subtitled/voiced/bark modes,
 // dialogue events for gameplay triggers.
 pub mod dialogue_manager;
+n// Navmesh generation from geometry: voxelize, filter walkable,
+// distance field, contour tracing, polygon mesh, regions.
+pub mod navmesh_builder;
+
+// Central AI system: manage agents, tick perception/decision/action,
+// LOD AI, AI pooling, group management.
+pub mod ai_system;
+
+// BT runtime: optimized tick execution, parallel node evaluation, decorator
+// stacking, sub-tree instancing, memory pool for nodes.
+pub mod behavior_tree_runtime;
+
+// Enhanced blackboard: typed keys, blackboard sharing between AI agents,
+// blackboard observers (notify on change), blackboard persistence,
+// time-stamped entries with automatic expiry, hierarchical blackboard.
+pub mod blackboard;
+
+// Goal-driven AI: goal priorities, goal selection, goal decomposition into
+// tasks, goal completion tracking, concurrent goals, dynamic re-prioritization.
+pub mod goal_system;
+
+// Enhanced pathfinding: Jump Point Search, theta* (any-angle), flow field
+// pathfinding, hierarchical decomposition, dynamic replanning.
+pub mod pathfinding;
+
+// Enhanced perception: team knowledge sharing, threat assessment scoring,
+// target prioritization, visibility prediction, last-known-position prediction.
+pub mod ai_perception;
+
+// Common AI behaviors: patrol, guard, investigate, chase, flee, hide, search,
+// wander, follow, escort, ambush -- all as reusable behavior subtrees.
+pub mod ai_behaviors;
 
 // Re-exports for enhanced behavior trees.
 pub use behavior_tree::{

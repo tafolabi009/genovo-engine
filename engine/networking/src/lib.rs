@@ -117,6 +117,14 @@ pub use relay_server::{
     RelayMessage, RelayServer, RelayServerConfig, RelayStats, SimpleAuthenticator,
 };
 
+// Enhanced replication: property-level replication, conditional replication,
+// priority-based bandwidth allocation, interest management.
+pub mod replication;
+
+// Network objects: network identity, ownership, authority transfer,
+// RPC routing, spawn/despawn synchronization, network variable sync.
+pub mod network_object;
+
 // Bandwidth management: per-channel bandwidth budgets, priority-based allocation,
 // congestion detection, adaptive send rate, bandwidth smoothing, burst allowance.
 pub mod bandwidth_manager;
@@ -143,10 +151,21 @@ pub mod packet_serializer;
 // refresh mechanism.
 pub mod server_browser;
 
+// State synchronization: snapshot interpolation, jitter buffer, clock
+// synchronization, latency estimation, adaptive quality control.
+pub mod state_sync;
+
+// Network transform: interpolated position/rotation, extrapolation,
+// ownership, authority, smooth corrections, dead reckoning.
+pub mod network_transform;
+
 // In-game chat: text channels (all/team/whisper), message history, chat
 // commands (/team, /all, /whisper), message filtering (profanity filter stub),
 // chat UI data, chat events.
 pub mod chat_system;
+n// Delta state compression: per-field dirty bits, baseline acking,
+// quantized encoding, bandwidth tracking per entity.
+pub mod delta_compression;
 
 // Large-scale networking: Fortnite-scale authoritative server, client-side
 // prediction with reconciliation, interest management, property replication,

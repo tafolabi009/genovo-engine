@@ -48,9 +48,16 @@ pub mod world_generator;
 // Building generation: floor plan generation, room classification, door/window
 // placement, interior decoration, exterior style, multi-story buildings.
 pub mod building_generator;
+n// Room/interior generation: room shapes, furniture, doors/windows,
+// hallway connections, decoration.
+pub mod room_generator;
 
 pub use texture_gen::{
     TextureBuffer, generate_brick, generate_cellular, generate_dirt, generate_marble,
     generate_normal_map, generate_perlin, generate_roughness_map, generate_rust, generate_voronoi,
     generate_wood, make_seamless,
 };
+
+// Enhanced dungeon: BSP + cellular automata hybrid, room decoration,
+// enemy/loot/trap placement, difficulty scaling, themed rooms.
+pub mod dungeon;
