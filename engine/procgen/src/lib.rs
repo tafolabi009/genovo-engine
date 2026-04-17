@@ -13,11 +13,14 @@
 //! - **Maze generation** — recursive backtracker, Kruskal, Prim, Eller, Wilson
 //! - **Name generation** — Markov chain procedural names for fantasy cultures
 
+pub mod city_generator;
 pub mod dungeon;
 pub mod lsystem;
 pub mod maze;
 pub mod name_gen;
 pub mod noise_gen;
+pub mod texture_gen;
+pub mod vegetation_gen;
 pub mod wfc;
 
 // Re-export primary types for ergonomic access.

@@ -21,6 +21,9 @@ pub mod texturing;
 pub mod vegetation;
 pub mod erosion;
 pub mod components;
+pub mod terrain_painting;
+pub mod terrain_physics;
+pub mod terrain_streaming;
 
 // ---------------------------------------------------------------------------
 // Re-exports
@@ -33,6 +36,18 @@ pub use texturing::{SplatMap, TerrainMaterial, TerrainLayer};
 pub use vegetation::{VegetationLayer, VegetationInstance, GrassRenderer};
 pub use erosion::{HydraulicErosion, ThermalErosion, WindErosion, TerrainBrush};
 pub use components::{TerrainComponent, TerrainSystem, TerrainCollider};
+pub use terrain_physics::{
+    HeightfieldCollider, PhysicsMaterial, SlopeConfig, SlopeInfo, TerrainContact,
+    TerrainRaycastHit,
+};
+pub use terrain_painting::{
+    BlendMode, BrushConfig, BrushFalloff, BrushShape, PaintCanvas, PaintHistory, PaintStroke,
+    PaintTarget, SplatmapLayer, TerrainPainter,
+};
+pub use terrain_streaming::{
+    LodLevel, StreamingConfig, StreamingStats, TerrainStreamingManager, TileCoord, TileEntry,
+    TileHeightData, TileState,
+};
 
 // ---------------------------------------------------------------------------
 // Error type

@@ -13,8 +13,10 @@
 
 pub mod ecs_bridge;
 pub mod hierarchy_system;
+pub mod light_system;
 pub mod node;
 pub mod prefab;
+pub mod scene_manager;
 pub mod scene_serializer;
 pub mod transform;
 
@@ -33,6 +35,20 @@ pub use scene_serializer::{
     SerializedScene, SerializedValue,
 };
 pub use transform::{GlobalTransform, TransformComponent, TransformHierarchy, TransformSystem};
+
+// Scene manager re-exports.
+pub use scene_manager::{
+    EntityId, LoadProgress, LoadSceneMode, SceneDefinition, SceneDependency, SceneEvent,
+    SceneHandle, SceneId, SceneInstance, SceneLoadRequest, SceneManager, SceneStackEntry,
+    SceneState, TransitionEffect, TransitionPhase,
+};
+
+// Light system re-exports.
+pub use light_system::{
+    AmbientMode, CameraFrustum, CulledLight, LightComponent, LightEnvironment, LightIntensity,
+    LightLayerMask, LightSystem, LightType, LinearColor, ShadowConfig, ShadowFilter,
+    ShadowResolution, color_temperature_to_rgb,
+};
 
 // Hierarchy system re-exports.
 pub use hierarchy_system::{
