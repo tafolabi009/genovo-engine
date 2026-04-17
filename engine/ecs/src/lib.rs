@@ -36,7 +36,7 @@ pub mod world;
 pub mod world_builder;
 pub mod world_query;
 pub mod query_cache;
-pub mod sparse_set_v2;
+pub mod sparse_set;
 pub mod system_graph;
 
 // Query filter system: With<T>, Without<T>, Changed<T>, Added<T>, Or<A,B>,
@@ -45,7 +45,7 @@ pub mod query_filters;
 
 // Optimized component storage: SoA (struct-of-arrays) layout, chunk iteration,
 // prefetch hints, sorted iteration by entity ID, memory pool backing.
-pub mod component_storage_v2;
+pub mod component_storage;
 
 // Component lifecycle hooks: on_insert, on_remove, on_modify callbacks per component
 // type, hook registration, batch hook processing, hook priority ordering.
@@ -122,7 +122,7 @@ pub use entity_commands_ext::{
 };
 
 // Sparse set v2 re-exports.
-pub use sparse_set_v2::{
+pub use sparse_set::{
     IntersectionView, SparseSetIter, SparseSetIterMut, SparseSetStats, SparseSetV2,
 };
 

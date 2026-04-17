@@ -45,3 +45,17 @@ pub use navigation::{
     DynamicObstacle, LinkId, LinkType, NavConfig, NavFlags, NavPath, NavPoly, NavigationManager,
     ObstacleId, OffMeshLink, PathCorridor, PolyId,
 };
+
+// Massive world: EVE Online-scale universe structure, server instancing with
+// cross-instance travel, hierarchical spatial database, and world persistence
+// with incremental sector saving.
+pub mod massive_world;
+
+pub use massive_world::{
+    CelestialBody, CelestialType, GalaxyMap, GalaxyPosition, GalaxyStats,
+    Instance, InstanceId, InstanceManager, InstanceManagerStats, InstanceState,
+    MassiveWorldSystem, PlayerId, SaveHeader, SaveState, SectorId,
+    SectorSaveData, SolarSystem, SpatialDatabase, SpatialDatabaseStats,
+    SpatialEntry, SpatialEntityId, SystemId, SystemLOD, TransferRequest,
+    WorldPersistence, PersistenceStats,
+};

@@ -28,7 +28,7 @@ pub mod utility_ai;
 
 // HTN (Hierarchical Task Network) planner: compound tasks decompose into primitives,
 // methods with preconditions, plan search with backtracking, partial plan execution.
-pub mod planner_v2;
+pub mod planner;
 
 // AI emotions: PAD model (Pleasure/Arousal/Dominance), emotion decay, triggers,
 // emotion-to-behavior mapping, facial expression output, mood persistence.
@@ -41,7 +41,7 @@ pub mod spatial_awareness;
 // Enhanced behavior trees: utility-scored selectors (hybrid utility+BT),
 // decorator: cooldown/limit/timeout/probability/force-success/force-fail,
 // subtree references, shared blackboard across trees, runtime BT debugging data.
-pub mod behavior_tree_v2;
+pub mod behavior_tree;
 
 // AI world representation: simplified world state for planning, spatial occupancy
 // grid, threat map, resource locations, ally positions, objective importance,
@@ -84,7 +84,7 @@ pub mod ai_debug;
 pub mod dialogue_manager;
 
 // Re-exports for enhanced behavior trees.
-pub use behavior_tree_v2::{
+pub use behavior_tree::{
     BehaviorTreeV2, BtDecorator, BtLibrary, BtNodeId, BtNodeType, BtNodeV2,
     BtStatus, DecoratorType, SharedBlackboard, UtilityConsideration,
     UtilityCurve, UtilityScore,

@@ -147,3 +147,20 @@ pub mod server_browser;
 // commands (/team, /all, /whisper), message filtering (profanity filter stub),
 // chat UI data, chat events.
 pub mod chat_system;
+
+// Large-scale networking: Fortnite-scale authoritative server, client-side
+// prediction with reconciliation, interest management, property replication,
+// priority-based bandwidth allocation, anti-cheat validation, visual smoothing.
+pub mod large_scale_networking;
+
+pub use large_scale_networking::{
+    AntiCheatConfig, AntiCheatSystem, BandwidthController, BandwidthStats,
+    CheatViolation, ClientBandwidth, ClientPrediction, ConnectedClient,
+    DirtyFlags, EntityReplicator, GameServer, GameServerStats, InputRingBuffer,
+    InterestManager, NetClientId, NetEntityId, NetEntityState, NetworkSmoothingManager,
+    PlayerInput, PredictionStats, PropertyDef, PropertyReliability,
+    PropertyReplicationManager, ReconciliationResult, RelevancyBudget,
+    RelevancyGrid, RelevancyTier, ReplicationCondition, ServerLoad,
+    ServerReconciliation, ServerTick, SmoothingState, TickNumber, Vec3Net,
+    Violation,
+};

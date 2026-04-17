@@ -1,1256 +1,2210 @@
-// engine/render/src/deferred.rs
+// engine/render/src/deferred_v2.rs
 //
-// Deferred rendering pipeline for the Genovo engine. Implements a full
-// G-Buffer with multiple render targets, geometry pass, lighting pass with
-// per-light-type volumes, composition pass, and a forward transparency pass.
+// Enhanced deferred rendering pipeline with thin G-buffer packing, stencil-based
+// light volumes, light pre-pass (deferred lighting), tiled deferred shading,
+// and cluster debug visualization.
 //
-// The deferred pipeline separates geometry rasterisation from lighting
-// evaluation, enabling efficient rendering of many lights without
-// re-drawing geometry.
+// This module extends the basic deferred pipeline with bandwidth-efficient
+// G-buffer layouts, advanced light culling strategies, and diagnostic tools
+// for inspecting the tile/cluster grid.
 
 use crate::interface::resource::TextureFormat;
-use crate::lighting::light_types::{Light, LightType, MAX_LIGHTS};
-use glam::{Mat4, Vec2, Vec3, Vec4};
+use glam::{Mat4, UVec2, UVec3, Vec2, Vec3, Vec4};
+use std::collections::HashMap;
 use std::f32::consts::PI;
 
 // ---------------------------------------------------------------------------
-// GBuffer layout and configuration
+// Constants
 // ---------------------------------------------------------------------------
 
-/// Describes the format and binding of each G-Buffer render target.
+/// Maximum number of lights supported by the tiled/clustered deferred path.
+pub const MAX_TILED_LIGHTS: usize = 4096;
+
+/// Default tile size in pixels for tiled deferred.
+pub const DEFAULT_TILE_SIZE: u32 = 16;
+
+/// Default number of depth slices for clustered shading.
+pub const DEFAULT_CLUSTER_DEPTH_SLICES: u32 = 24;
+
+/// Maximum number of lights per tile before overflow handling kicks in.
+pub const MAX_LIGHTS_PER_TILE: usize = 256;
+
+/// Maximum number of lights per cluster.
+pub const MAX_LIGHTS_PER_CLUSTER: usize = 128;
+
+/// Stencil reference value used for marking light volume pixels.
+pub const STENCIL_LIGHT_VOLUME_REF: u8 = 0x01;
+
+/// Small epsilon for numerical stability.
+const EPSILON: f32 = 1e-7;
+
+// ---------------------------------------------------------------------------
+// Thin G-Buffer layout
+// ---------------------------------------------------------------------------
+
+/// Describes a bandwidth-efficient "thin" G-buffer that packs albedo+metallic
+/// into a single render target and normal+roughness into another.
+///
+/// Layout:
+///   RT0: albedo.rgb (R8G8B8) + metallic (A8)     -> RGBA8Unorm
+///   RT1: normal.xy  (R16G16) + roughness (B8) + flags (A8)  -> RGBA16Float
+///   Depth: 32-bit float depth buffer
 #[derive(Debug, Clone)]
-pub struct GBufferLayout {
-    /// Albedo (base colour): RGBA8 or RGBA16Float.
-    pub albedo_format: TextureFormat,
-    /// World-space or view-space normals: RGB10A2 or RGBA16Float.
-    pub normal_format: TextureFormat,
-    /// Metallic (R), Roughness (G), AO (B), material ID (A).
-    pub metallic_roughness_format: TextureFormat,
-    /// Depth buffer format.
-    pub depth_format: TextureFormat,
-    /// Emissive: RGBA16Float.
-    pub emissive_format: TextureFormat,
-    /// Velocity / motion vectors: RG16Float.
-    pub velocity_format: TextureFormat,
+pub struct ThinGBufferLayout {
+    /// Format for the albedo+metallic render target.
+    pub albedo_metallic_format: TextureFormat,
+    /// Format for the normal+roughness render target.
+    pub normal_roughness_format: TextureFormat,
+    /// Depth-stencil format.
+    pub depth_stencil_format: TextureFormat,
+    /// Optional emissive render target (only when emissive objects are present).
+    pub emissive_format: Option<TextureFormat>,
+    /// Width of the G-buffer in pixels.
+    pub width: u32,
+    /// Height of the G-buffer in pixels.
+    pub height: u32,
 }
 
-impl Default for GBufferLayout {
+impl Default for ThinGBufferLayout {
     fn default() -> Self {
         Self {
-            albedo_format: TextureFormat::Rgba8Unorm,
-            normal_format: TextureFormat::Rgba16Float,
-            metallic_roughness_format: TextureFormat::Rgba8Unorm,
-            depth_format: TextureFormat::Depth32Float,
-            emissive_format: TextureFormat::Rgba16Float,
-            velocity_format: TextureFormat::Rg16Float,
+            albedo_metallic_format: TextureFormat::Rgba8Unorm,
+            normal_roughness_format: TextureFormat::Rgba16Float,
+            depth_stencil_format: TextureFormat::Depth32Float,
+            emissive_format: None,
+            width: 1920,
+            height: 1080,
         }
     }
 }
 
-impl GBufferLayout {
-    /// High-precision layout using 16-bit float for most targets.
-    pub fn high_precision() -> Self {
+impl ThinGBufferLayout {
+    /// Create a thin G-buffer layout for a given resolution.
+    pub fn new(width: u32, height: u32) -> Self {
         Self {
-            albedo_format: TextureFormat::Rgba16Float,
-            normal_format: TextureFormat::Rgba16Float,
-            metallic_roughness_format: TextureFormat::Rgba16Float,
-            depth_format: TextureFormat::Depth32Float,
-            emissive_format: TextureFormat::Rgba16Float,
-            velocity_format: TextureFormat::Rg16Float,
-        }
-    }
-
-    /// Compact layout for lower memory bandwidth usage.
-    pub fn compact() -> Self {
-        Self {
-            albedo_format: TextureFormat::Rgba8Unorm,
-            normal_format: TextureFormat::Rgb10A2Unorm,
-            metallic_roughness_format: TextureFormat::Rgba8Unorm,
-            depth_format: TextureFormat::Depth32Float,
-            emissive_format: TextureFormat::Rg11B10Float,
-            velocity_format: TextureFormat::Rg16Float,
-        }
-    }
-
-    /// Return all colour attachment formats in order.
-    pub fn color_formats(&self) -> Vec<TextureFormat> {
-        vec![
-            self.albedo_format,
-            self.normal_format,
-            self.metallic_roughness_format,
-            self.emissive_format,
-            self.velocity_format,
-        ]
-    }
-}
-
-// ---------------------------------------------------------------------------
-// GBuffer
-// ---------------------------------------------------------------------------
-
-/// Holds the G-Buffer render target handles and dimensions.
-#[derive(Debug, Clone)]
-pub struct GBuffer {
-    /// Albedo / base colour render target.
-    pub albedo_rt: u64,
-    /// Normal render target (world-space normals, encoded).
-    pub normal_rt: u64,
-    /// Metallic-roughness-AO render target.
-    pub metallic_roughness_rt: u64,
-    /// Depth render target (hardware depth buffer).
-    pub depth_rt: u64,
-    /// Emissive render target.
-    pub emissive_rt: u64,
-    /// Velocity / motion vector render target.
-    pub velocity_rt: u64,
-    /// Width in pixels.
-    pub width: u32,
-    /// Height in pixels.
-    pub height: u32,
-    /// Layout describing formats.
-    pub layout: GBufferLayout,
-}
-
-impl GBuffer {
-    /// Create a new G-Buffer with the given dimensions and layout.
-    pub fn new(width: u32, height: u32, layout: GBufferLayout) -> Self {
-        Self {
-            albedo_rt: 0,
-            normal_rt: 0,
-            metallic_roughness_rt: 0,
-            depth_rt: 0,
-            emissive_rt: 0,
-            velocity_rt: 0,
             width,
             height,
-            layout,
+            ..Default::default()
         }
     }
 
-    /// Create with default layout.
-    pub fn with_default_layout(width: u32, height: u32) -> Self {
-        Self::new(width, height, GBufferLayout::default())
+    /// High-precision variant using 16-bit float for albedo as well.
+    pub fn high_precision(width: u32, height: u32) -> Self {
+        Self {
+            albedo_metallic_format: TextureFormat::Rgba16Float,
+            normal_roughness_format: TextureFormat::Rgba16Float,
+            depth_stencil_format: TextureFormat::Depth32Float,
+            emissive_format: Some(TextureFormat::Rgba16Float),
+            width,
+            height,
+        }
     }
 
-    /// Resize the G-Buffer (invalidates all handles).
-    pub fn resize(&mut self, width: u32, height: u32) {
-        self.width = width;
-        self.height = height;
-        // Handles would need to be recreated by the renderer.
-        self.albedo_rt = 0;
-        self.normal_rt = 0;
-        self.metallic_roughness_rt = 0;
-        self.depth_rt = 0;
-        self.emissive_rt = 0;
-        self.velocity_rt = 0;
+    /// Minimal layout using RGB10A2 for normals (10-bit precision per axis).
+    pub fn minimal(width: u32, height: u32) -> Self {
+        Self {
+            albedo_metallic_format: TextureFormat::Rgba8Unorm,
+            normal_roughness_format: TextureFormat::Rgb10A2Unorm,
+            depth_stencil_format: TextureFormat::Depth32Float,
+            emissive_format: None,
+            width,
+            height,
+        }
     }
 
-    /// Check whether all render targets have valid handles.
-    pub fn is_valid(&self) -> bool {
-        self.albedo_rt != 0
-            && self.normal_rt != 0
-            && self.metallic_roughness_rt != 0
-            && self.depth_rt != 0
-            && self.emissive_rt != 0
-            && self.velocity_rt != 0
-    }
-
-    /// Total number of colour attachments (excludes depth).
+    /// Returns the total colour attachment count.
     pub fn color_attachment_count(&self) -> usize {
-        5 // albedo, normal, metallic_roughness, emissive, velocity
+        if self.emissive_format.is_some() { 3 } else { 2 }
     }
 
-    /// Compute the total memory footprint estimate in bytes.
+    /// Returns the total estimated memory usage in bytes.
     pub fn estimated_memory_bytes(&self) -> u64 {
         let pixels = self.width as u64 * self.height as u64;
-        let albedo_bpp = format_bytes_per_pixel(self.layout.albedo_format);
-        let normal_bpp = format_bytes_per_pixel(self.layout.normal_format);
-        let mr_bpp = format_bytes_per_pixel(self.layout.metallic_roughness_format);
-        let depth_bpp = 4u64; // Depth32Float = 4 bytes
-        let emissive_bpp = format_bytes_per_pixel(self.layout.emissive_format);
-        let velocity_bpp = format_bytes_per_pixel(self.layout.velocity_format);
-
-        pixels * (albedo_bpp + normal_bpp + mr_bpp + depth_bpp + emissive_bpp + velocity_bpp)
+        let albedo_bpp = format_bytes_per_pixel(self.albedo_metallic_format);
+        let normal_bpp = format_bytes_per_pixel(self.normal_roughness_format);
+        let depth_bpp = 4u64; // 32-bit depth
+        let emissive_bpp = self
+            .emissive_format
+            .map(format_bytes_per_pixel)
+            .unwrap_or(0);
+        pixels * (albedo_bpp + normal_bpp + depth_bpp + emissive_bpp)
     }
 }
 
-/// Approximate bytes per pixel for a texture format.
+/// Returns the bytes per pixel for a given texture format (approximate).
 fn format_bytes_per_pixel(format: TextureFormat) -> u64 {
     match format {
-        TextureFormat::R8Unorm | TextureFormat::R8Snorm | TextureFormat::R8Uint | TextureFormat::R8Sint => 1,
-        TextureFormat::Rg8Unorm | TextureFormat::Rg8Snorm | TextureFormat::R16Float | TextureFormat::R16Uint | TextureFormat::R16Sint => 2,
-        TextureFormat::Rgba8Unorm | TextureFormat::Rgba8UnormSrgb | TextureFormat::Rgba8Snorm
-        | TextureFormat::Rgba8Uint | TextureFormat::Rgba8Sint
-        | TextureFormat::Bgra8Unorm | TextureFormat::Bgra8UnormSrgb
-        | TextureFormat::Rg16Float | TextureFormat::Rgb10A2Unorm | TextureFormat::Rg11B10Float
-        | TextureFormat::R32Float | TextureFormat::R32Uint | TextureFormat::R32Sint
-        | TextureFormat::Rg16Uint | TextureFormat::Rg16Sint
-        | TextureFormat::Depth32Float | TextureFormat::Depth24PlusStencil8 => 4,
-        TextureFormat::Rgba16Float | TextureFormat::Rgba16Uint | TextureFormat::Rgba16Sint
-        | TextureFormat::Rg32Float | TextureFormat::Rg32Uint | TextureFormat::Rg32Sint => 8,
-        TextureFormat::Rgba32Float | TextureFormat::Rgba32Uint | TextureFormat::Rgba32Sint => 16,
-        _ => 4, // default estimate
+        TextureFormat::Rgba8Unorm | TextureFormat::Rgba8Snorm => 4,
+        TextureFormat::Rgba16Float => 8,
+        TextureFormat::Rg16Float => 4,
+        TextureFormat::Rgb10A2Unorm => 4,
+        TextureFormat::Rg11B10Float => 4,
+        TextureFormat::Depth32Float => 4,
+        _ => 4,
     }
 }
 
 // ---------------------------------------------------------------------------
-// Normal encoding/decoding
+// Thin G-Buffer runtime data
 // ---------------------------------------------------------------------------
 
-/// Encode a world-space normal to octahedron encoding (2 floats).
-///
-/// Octahedron encoding maps unit sphere normals to a 2D [-1,1]^2 square,
-/// which can be stored in RG16Float with minimal loss.
-pub fn encode_normal_octahedron(normal: Vec3) -> Vec2 {
-    let n = normal / (normal.x.abs() + normal.y.abs() + normal.z.abs());
-    if n.z >= 0.0 {
-        Vec2::new(n.x, n.y)
-    } else {
-        Vec2::new(
-            (1.0 - n.y.abs()) * if n.x >= 0.0 { 1.0 } else { -1.0 },
-            (1.0 - n.x.abs()) * if n.y >= 0.0 { 1.0 } else { -1.0 },
-        )
-    }
+/// Holds the actual render target handles for a thin G-buffer.
+#[derive(Debug, Clone)]
+pub struct ThinGBuffer {
+    /// Albedo+metallic packed render target.
+    pub albedo_metallic_rt: u64,
+    /// Normal+roughness packed render target.
+    pub normal_roughness_rt: u64,
+    /// Depth-stencil render target.
+    pub depth_stencil_rt: u64,
+    /// Optional emissive render target.
+    pub emissive_rt: Option<u64>,
+    /// Layout descriptor.
+    pub layout: ThinGBufferLayout,
+    /// Whether the G-buffer has been filled this frame.
+    pub is_valid: bool,
 }
 
-/// Decode an octahedron-encoded normal back to a unit vector.
-pub fn decode_normal_octahedron(encoded: Vec2) -> Vec3 {
-    let mut n = Vec3::new(encoded.x, encoded.y, 1.0 - encoded.x.abs() - encoded.y.abs());
-    if n.z < 0.0 {
-        let old_x = n.x;
-        let old_y = n.y;
-        n.x = (1.0 - old_y.abs()) * if old_x >= 0.0 { 1.0 } else { -1.0 };
-        n.y = (1.0 - old_x.abs()) * if old_y >= 0.0 { 1.0 } else { -1.0 };
-    }
-    n.normalize_or_zero()
-}
-
-/// Encode a normal to spheremap (Lambert azimuthal equal-area) encoding.
-pub fn encode_normal_spheremap(normal: Vec3) -> Vec2 {
-    let f = (8.0 * normal.z + 8.0).sqrt();
-    Vec2::new(normal.x / f + 0.5, normal.y / f + 0.5)
-}
-
-/// Decode a spheremap-encoded normal.
-pub fn decode_normal_spheremap(encoded: Vec2) -> Vec3 {
-    let fn_val = Vec2::new(encoded.x * 4.0 - 2.0, encoded.y * 4.0 - 2.0);
-    let f = fn_val.dot(fn_val);
-    let g = (1.0 - f / 4.0).sqrt();
-    Vec3::new(fn_val.x * g, fn_val.y * g, 1.0 - f / 2.0).normalize_or_zero()
-}
-
-// ---------------------------------------------------------------------------
-// Light volume meshes
-// ---------------------------------------------------------------------------
-
-/// A simple vertex for light volume geometry (position only).
-#[repr(C)]
-#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct LightVolumeVertex {
-    pub position: [f32; 3],
-}
-
-/// Generate a unit sphere mesh for point light volumes.
-///
-/// Returns (vertices, indices) for a UV sphere with the given tessellation.
-pub fn generate_sphere_volume(segments: u32, rings: u32) -> (Vec<LightVolumeVertex>, Vec<u32>) {
-    let mut vertices = Vec::new();
-    let mut indices = Vec::new();
-
-    // Generate vertices.
-    for ring in 0..=rings {
-        let theta = PI * ring as f32 / rings as f32;
-        let sin_theta = theta.sin();
-        let cos_theta = theta.cos();
-
-        for seg in 0..=segments {
-            let phi = 2.0 * PI * seg as f32 / segments as f32;
-            let sin_phi = phi.sin();
-            let cos_phi = phi.cos();
-
-            vertices.push(LightVolumeVertex {
-                position: [
-                    sin_theta * cos_phi,
-                    cos_theta,
-                    sin_theta * sin_phi,
-                ],
-            });
-        }
-    }
-
-    // Generate indices.
-    for ring in 0..rings {
-        for seg in 0..segments {
-            let current = ring * (segments + 1) + seg;
-            let next = current + segments + 1;
-
-            indices.push(current);
-            indices.push(next);
-            indices.push(current + 1);
-
-            indices.push(current + 1);
-            indices.push(next);
-            indices.push(next + 1);
-        }
-    }
-
-    (vertices, indices)
-}
-
-/// Generate a cone mesh for spot light volumes.
-///
-/// The cone apex is at the origin, pointing along +Z with the given
-/// half-angle and height.
-pub fn generate_cone_volume(segments: u32, half_angle: f32, height: f32) -> (Vec<LightVolumeVertex>, Vec<u32>) {
-    let mut vertices = Vec::new();
-    let mut indices = Vec::new();
-
-    let base_radius = height * half_angle.tan();
-
-    // Apex vertex.
-    vertices.push(LightVolumeVertex { position: [0.0, 0.0, 0.0] });
-
-    // Base circle vertices.
-    for seg in 0..=segments {
-        let phi = 2.0 * PI * seg as f32 / segments as f32;
-        vertices.push(LightVolumeVertex {
-            position: [
-                base_radius * phi.cos(),
-                base_radius * phi.sin(),
-                height,
-            ],
-        });
-    }
-
-    // Base center vertex.
-    let center_idx = vertices.len() as u32;
-    vertices.push(LightVolumeVertex { position: [0.0, 0.0, height] });
-
-    // Side triangles (apex to base edge).
-    for seg in 0..segments {
-        indices.push(0); // apex
-        indices.push(1 + seg);
-        indices.push(1 + seg + 1);
-    }
-
-    // Base cap triangles.
-    for seg in 0..segments {
-        indices.push(center_idx);
-        indices.push(1 + seg + 1);
-        indices.push(1 + seg);
-    }
-
-    (vertices, indices)
-}
-
-/// Generate a fullscreen triangle (used for directional light pass and
-/// composition). The triangle covers the entire viewport when rendered
-/// without a projection matrix.
-pub fn generate_fullscreen_triangle() -> (Vec<LightVolumeVertex>, Vec<u32>) {
-    let vertices = vec![
-        LightVolumeVertex { position: [-1.0, -1.0, 0.0] },
-        LightVolumeVertex { position: [3.0, -1.0, 0.0] },
-        LightVolumeVertex { position: [-1.0, 3.0, 0.0] },
-    ];
-    let indices = vec![0, 1, 2];
-    (vertices, indices)
-}
-
-// ---------------------------------------------------------------------------
-// GPU uniform structures
-// ---------------------------------------------------------------------------
-
-/// Per-frame camera data for the deferred pipeline.
-#[repr(C)]
-#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct DeferredCameraUniforms {
-    /// View matrix.
-    pub view: [[f32; 4]; 4],
-    /// Projection matrix.
-    pub projection: [[f32; 4]; 4],
-    /// Inverse view matrix (for reconstructing world position from depth).
-    pub inv_view: [[f32; 4]; 4],
-    /// Inverse projection matrix.
-    pub inv_projection: [[f32; 4]; 4],
-    /// View-projection matrix.
-    pub view_projection: [[f32; 4]; 4],
-    /// Previous frame view-projection (for velocity computation).
-    pub prev_view_projection: [[f32; 4]; 4],
-    /// Camera position in world space (xyz) + near plane (w).
-    pub camera_pos_near: [f32; 4],
-    /// Viewport size (xy) + far plane (z) + padding (w).
-    pub viewport_far: [f32; 4],
-}
-
-impl DeferredCameraUniforms {
-    /// Build from matrices and camera parameters.
-    pub fn from_matrices(
-        view: Mat4,
-        projection: Mat4,
-        prev_vp: Mat4,
-        camera_pos: Vec3,
-        near: f32,
-        far: f32,
-        width: u32,
-        height: u32,
-    ) -> Self {
-        let vp = projection * view;
-        let inv_view = view.inverse();
-        let inv_proj = projection.inverse();
-
+impl ThinGBuffer {
+    /// Create a new thin G-buffer from a layout descriptor.
+    pub fn new(layout: ThinGBufferLayout) -> Self {
         Self {
-            view: view.to_cols_array_2d(),
-            projection: projection.to_cols_array_2d(),
-            inv_view: inv_view.to_cols_array_2d(),
-            inv_projection: inv_proj.to_cols_array_2d(),
-            view_projection: vp.to_cols_array_2d(),
-            prev_view_projection: prev_vp.to_cols_array_2d(),
-            camera_pos_near: [camera_pos.x, camera_pos.y, camera_pos.z, near],
-            viewport_far: [width as f32, height as f32, far, 0.0],
+            albedo_metallic_rt: 0,
+            normal_roughness_rt: 0,
+            depth_stencil_rt: 0,
+            emissive_rt: if layout.emissive_format.is_some() {
+                Some(0)
+            } else {
+                None
+            },
+            layout,
+            is_valid: false,
         }
+    }
+
+    /// Invalidate the G-buffer (e.g. on resize).
+    pub fn invalidate(&mut self) {
+        self.is_valid = false;
+    }
+
+    /// Mark the G-buffer as valid after a geometry pass.
+    pub fn mark_valid(&mut self) {
+        self.is_valid = true;
+    }
+
+    /// Resize the G-buffer.
+    pub fn resize(&mut self, width: u32, height: u32) {
+        self.layout.width = width;
+        self.layout.height = height;
+        self.invalidate();
+    }
+
+    /// Get resolution as a 2D vector.
+    pub fn resolution(&self) -> UVec2 {
+        UVec2::new(self.layout.width, self.layout.height)
     }
 }
 
-/// Per-object data for the geometry pass.
-#[repr(C)]
-#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct GeometryPassUniforms {
-    /// Model (world) matrix.
-    pub model: [[f32; 4]; 4],
-    /// Normal matrix (transpose of inverse of upper-left 3x3 of model).
-    pub normal_matrix: [[f32; 4]; 4],
-    /// Previous frame model matrix (for velocity computation).
-    pub prev_model: [[f32; 4]; 4],
-    /// Material parameters: x=metallic, y=roughness, z=ao, w=emissive_intensity.
-    pub material_params: [f32; 4],
-    /// Base colour (albedo) tint.
-    pub base_color: [f32; 4],
-    /// Emissive colour (RGB) + padding.
-    pub emissive_color: [f32; 4],
+// ---------------------------------------------------------------------------
+// G-Buffer packing / unpacking helpers
+// ---------------------------------------------------------------------------
+
+/// Encode albedo and metallic into a single RGBA8 value.
+#[derive(Debug, Clone, Copy)]
+pub struct PackedAlbedoMetallic {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
+    pub metallic: u8,
 }
 
-impl GeometryPassUniforms {
-    /// Build from model matrix and material properties.
-    pub fn from_model(
-        model: Mat4,
-        prev_model: Mat4,
-        base_color: Vec4,
-        metallic: f32,
-        roughness: f32,
-        ao: f32,
-        emissive_color: Vec3,
-        emissive_intensity: f32,
-    ) -> Self {
-        let normal_matrix = model.inverse().transpose();
-
+impl PackedAlbedoMetallic {
+    /// Pack an albedo colour (linear 0-1 range) and metallic value.
+    pub fn pack(albedo: Vec3, metallic: f32) -> Self {
         Self {
-            model: model.to_cols_array_2d(),
-            normal_matrix: normal_matrix.to_cols_array_2d(),
-            prev_model: prev_model.to_cols_array_2d(),
-            material_params: [metallic, roughness, ao, emissive_intensity],
-            base_color: base_color.to_array(),
-            emissive_color: [emissive_color.x, emissive_color.y, emissive_color.z, 0.0],
-        }
-    }
-}
-
-/// Per-light data for the lighting pass.
-#[repr(C)]
-#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct LightPassUniforms {
-    /// Light world matrix (for light volume positioning/scaling).
-    pub light_world: [[f32; 4]; 4],
-    /// Light position (xyz) + type (w).
-    pub position_type: [f32; 4],
-    /// Light colour (rgb) + intensity (a).
-    pub color_intensity: [f32; 4],
-    /// Light direction (xyz) + range (w).
-    pub direction_range: [f32; 4],
-    /// Spot parameters: inner_cos (x), outer_cos (y), shadow_index (z), padding (w).
-    pub spot_params: [f32; 4],
-}
-
-impl LightPassUniforms {
-    /// Build from a Light and a world matrix for the light volume.
-    pub fn from_light(light: &Light, light_world: Mat4) -> Self {
-        let gpu_data = light.to_gpu_data();
-        Self {
-            light_world: light_world.to_cols_array_2d(),
-            position_type: gpu_data.position_type.to_array(),
-            color_intensity: gpu_data.color_intensity.to_array(),
-            direction_range: gpu_data.direction_range.to_array(),
-            spot_params: gpu_data.spot_params.to_array(),
+            r: (albedo.x.clamp(0.0, 1.0) * 255.0) as u8,
+            g: (albedo.y.clamp(0.0, 1.0) * 255.0) as u8,
+            b: (albedo.z.clamp(0.0, 1.0) * 255.0) as u8,
+            metallic: (metallic.clamp(0.0, 1.0) * 255.0) as u8,
         }
     }
 
-    /// Build a directional light uniform (fullscreen pass, identity world).
-    pub fn from_directional(light: &Light) -> Self {
-        Self::from_light(light, Mat4::IDENTITY)
-    }
-
-    /// Build for a point light with a sphere volume.
-    pub fn from_point_light(light: &Light, position: Vec3, radius: f32) -> Self {
-        let world = Mat4::from_scale_rotation_translation(
-            Vec3::splat(radius),
-            glam::Quat::IDENTITY,
-            position,
+    /// Unpack to linear albedo and metallic.
+    pub fn unpack(&self) -> (Vec3, f32) {
+        let albedo = Vec3::new(
+            self.r as f32 / 255.0,
+            self.g as f32 / 255.0,
+            self.b as f32 / 255.0,
         );
-        Self::from_light(light, world)
+        let metallic = self.metallic as f32 / 255.0;
+        (albedo, metallic)
     }
 
-    /// Build for a spot light with a cone volume.
-    pub fn from_spot_light(
-        light: &Light,
+    /// Encode to a u32 (RGBA8 packed).
+    pub fn to_u32(&self) -> u32 {
+        (self.r as u32) | ((self.g as u32) << 8) | ((self.b as u32) << 16) | ((self.metallic as u32) << 24)
+    }
+
+    /// Decode from a u32 (RGBA8 packed).
+    pub fn from_u32(v: u32) -> Self {
+        Self {
+            r: (v & 0xFF) as u8,
+            g: ((v >> 8) & 0xFF) as u8,
+            b: ((v >> 16) & 0xFF) as u8,
+            metallic: ((v >> 24) & 0xFF) as u8,
+        }
+    }
+}
+
+/// Encode world-space normal (octahedron mapping) and roughness.
+#[derive(Debug, Clone, Copy)]
+pub struct PackedNormalRoughness {
+    /// Octahedron-encoded normal X component (16-bit float).
+    pub oct_x: f32,
+    /// Octahedron-encoded normal Y component (16-bit float).
+    pub oct_y: f32,
+    /// Roughness value (0-1).
+    pub roughness: f32,
+    /// Material flags (ambient occlusion, subsurface, etc.)
+    pub flags: u8,
+}
+
+impl PackedNormalRoughness {
+    /// Encode a world-space normal and roughness.
+    pub fn pack(normal: Vec3, roughness: f32, flags: u8) -> Self {
+        let n = normal.normalize_or_zero();
+        let inv_l1 = 1.0 / (n.x.abs() + n.y.abs() + n.z.abs() + EPSILON);
+        let mut oct_x = n.x * inv_l1;
+        let mut oct_y = n.y * inv_l1;
+        if n.z < 0.0 {
+            let tmp_x = (1.0 - oct_y.abs()) * oct_x.signum();
+            let tmp_y = (1.0 - oct_x.abs()) * oct_y.signum();
+            oct_x = tmp_x;
+            oct_y = tmp_y;
+        }
+        Self {
+            oct_x,
+            oct_y,
+            roughness: roughness.clamp(0.0, 1.0),
+            flags,
+        }
+    }
+
+    /// Decode octahedron normal.
+    pub fn unpack_normal(&self) -> Vec3 {
+        let mut n = Vec3::new(self.oct_x, self.oct_y, 1.0 - self.oct_x.abs() - self.oct_y.abs());
+        if n.z < 0.0 {
+            let tmp_x = (1.0 - n.y.abs()) * n.x.signum();
+            let tmp_y = (1.0 - n.x.abs()) * n.y.signum();
+            n.x = tmp_x;
+            n.y = tmp_y;
+        }
+        n.normalize_or_zero()
+    }
+
+    /// Get roughness value.
+    pub fn unpack_roughness(&self) -> f32 {
+        self.roughness
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Stencil-based light volumes
+// ---------------------------------------------------------------------------
+
+/// A light volume for stencil-based deferred lighting.
+///
+/// The stencil technique works in two passes:
+/// 1. Render the back-faces of the light volume with depth test, incrementing stencil.
+/// 2. Render the front-faces with stencil test, applying lighting where stencil != 0.
+///
+/// This avoids lighting pixels outside the light's influence.
+#[derive(Debug, Clone)]
+pub struct StencilLightVolume {
+    /// Light index into the global light array.
+    pub light_index: u32,
+    /// Type of volume geometry.
+    pub volume_type: LightVolumeType,
+    /// World-space centre of the light.
+    pub position: Vec3,
+    /// Radius of the light (for sphere volumes).
+    pub radius: f32,
+    /// Direction (for cone/spot volumes).
+    pub direction: Vec3,
+    /// Outer angle in radians (for spot lights).
+    pub outer_angle: f32,
+    /// Inner angle in radians (for spot lights).
+    pub inner_angle: f32,
+    /// World transform of the volume mesh.
+    pub world_transform: Mat4,
+    /// Whether the camera is inside this volume.
+    pub camera_inside: bool,
+    /// Light colour (linear HDR).
+    pub color: Vec3,
+    /// Light intensity.
+    pub intensity: f32,
+}
+
+/// Types of light volume geometry used for stencil marking.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum LightVolumeType {
+    /// Full-screen quad (for directional lights).
+    FullScreenQuad,
+    /// Sphere (for point lights).
+    Sphere,
+    /// Cone (for spot lights).
+    Cone,
+    /// Oriented box (for area/rect lights).
+    OrientedBox,
+    /// Custom mesh (for unusual light shapes).
+    CustomMesh,
+}
+
+impl StencilLightVolume {
+    /// Create a point light volume.
+    pub fn point_light(index: u32, position: Vec3, radius: f32, color: Vec3, intensity: f32) -> Self {
+        let scale = Mat4::from_scale(Vec3::splat(radius));
+        let translation = Mat4::from_translation(position);
+        Self {
+            light_index: index,
+            volume_type: LightVolumeType::Sphere,
+            position,
+            radius,
+            direction: Vec3::NEG_Z,
+            outer_angle: PI,
+            inner_angle: PI,
+            world_transform: translation * scale,
+            camera_inside: false,
+            color,
+            intensity,
+        }
+    }
+
+    /// Create a spot light volume.
+    pub fn spot_light(
+        index: u32,
         position: Vec3,
         direction: Vec3,
         range: f32,
         outer_angle: f32,
+        inner_angle: f32,
+        color: Vec3,
+        intensity: f32,
     ) -> Self {
-        // Build a rotation that orients +Z towards the spot direction.
-        let up = if direction.y.abs() > 0.99 { Vec3::X } else { Vec3::Y };
-        let right = direction.cross(up).normalize_or_zero();
-        let up = right.cross(direction).normalize_or_zero();
-        let rotation = Mat4::from_cols(
-            right.extend(0.0),
-            up.extend(0.0),
-            direction.extend(0.0),
-            Vec4::W,
-        );
-
-        let scale_factor = range * outer_angle.tan();
-        let scale = Mat4::from_scale(Vec3::new(scale_factor, scale_factor, range));
+        let cone_radius = range * outer_angle.tan();
+        let scale = Mat4::from_scale(Vec3::new(cone_radius, cone_radius, range));
         let translation = Mat4::from_translation(position);
-        let world = translation * rotation * scale;
+        Self {
+            light_index: index,
+            volume_type: LightVolumeType::Cone,
+            position,
+            radius: range,
+            direction: direction.normalize_or_zero(),
+            outer_angle,
+            inner_angle,
+            world_transform: translation * scale,
+            camera_inside: false,
+            color,
+            intensity,
+        }
+    }
 
-        Self::from_light(light, world)
+    /// Create a directional light (full-screen quad, no volume).
+    pub fn directional_light(index: u32, direction: Vec3, color: Vec3, intensity: f32) -> Self {
+        Self {
+            light_index: index,
+            volume_type: LightVolumeType::FullScreenQuad,
+            position: Vec3::ZERO,
+            radius: f32::MAX,
+            direction: direction.normalize_or_zero(),
+            outer_angle: PI,
+            inner_angle: PI,
+            world_transform: Mat4::IDENTITY,
+            camera_inside: true,
+            color,
+            intensity,
+        }
+    }
+
+    /// Create an area light volume (oriented box).
+    pub fn area_light(
+        index: u32,
+        position: Vec3,
+        half_extents: Vec3,
+        orientation: Mat4,
+        color: Vec3,
+        intensity: f32,
+    ) -> Self {
+        let scale = Mat4::from_scale(half_extents);
+        let translation = Mat4::from_translation(position);
+        Self {
+            light_index: index,
+            volume_type: LightVolumeType::OrientedBox,
+            position,
+            radius: half_extents.length(),
+            direction: Vec3::NEG_Z,
+            outer_angle: PI,
+            inner_angle: PI,
+            world_transform: translation * orientation * scale,
+            camera_inside: false,
+            color,
+            intensity,
+        }
+    }
+
+    /// Test whether the camera is inside this light volume.
+    pub fn test_camera_inside(&mut self, camera_pos: Vec3) {
+        self.camera_inside = match self.volume_type {
+            LightVolumeType::FullScreenQuad => true,
+            LightVolumeType::Sphere => {
+                (camera_pos - self.position).length_squared() < self.radius * self.radius
+            }
+            LightVolumeType::Cone => {
+                let to_cam = camera_pos - self.position;
+                let dist_along = to_cam.dot(self.direction);
+                if dist_along < 0.0 || dist_along > self.radius {
+                    false
+                } else {
+                    let perp_dist = (to_cam - self.direction * dist_along).length();
+                    let cone_radius_at_dist = dist_along * self.outer_angle.tan();
+                    perp_dist < cone_radius_at_dist
+                }
+            }
+            LightVolumeType::OrientedBox | LightVolumeType::CustomMesh => {
+                // Conservative: assume inside if close enough
+                (camera_pos - self.position).length_squared() < self.radius * self.radius
+            }
+        };
+    }
+
+    /// Get the stencil render state for the back-face pass.
+    pub fn back_face_stencil_state(&self) -> StencilState {
+        if self.camera_inside {
+            StencilState {
+                stencil_test: false,
+                stencil_op_fail: StencilOp::Keep,
+                stencil_op_depth_fail: StencilOp::Keep,
+                stencil_op_pass: StencilOp::Keep,
+                reference: 0,
+                read_mask: 0xFF,
+                write_mask: 0xFF,
+                depth_test: false,
+                cull_mode: CullFace::None,
+            }
+        } else {
+            StencilState {
+                stencil_test: false,
+                stencil_op_fail: StencilOp::Keep,
+                stencil_op_depth_fail: StencilOp::IncrementWrap,
+                stencil_op_pass: StencilOp::Keep,
+                reference: 0,
+                read_mask: 0xFF,
+                write_mask: 0xFF,
+                depth_test: true,
+                cull_mode: CullFace::Front,
+            }
+        }
+    }
+
+    /// Get the stencil render state for the front-face lighting pass.
+    pub fn front_face_stencil_state(&self) -> StencilState {
+        if self.camera_inside {
+            StencilState {
+                stencil_test: false,
+                stencil_op_fail: StencilOp::Keep,
+                stencil_op_depth_fail: StencilOp::Keep,
+                stencil_op_pass: StencilOp::Keep,
+                reference: 0,
+                read_mask: 0xFF,
+                write_mask: 0x00,
+                depth_test: false,
+                cull_mode: CullFace::Front,
+            }
+        } else {
+            StencilState {
+                stencil_test: true,
+                stencil_op_fail: StencilOp::Keep,
+                stencil_op_depth_fail: StencilOp::Keep,
+                stencil_op_pass: StencilOp::DecrementWrap,
+                reference: STENCIL_LIGHT_VOLUME_REF,
+                read_mask: 0xFF,
+                write_mask: 0xFF,
+                depth_test: true,
+                cull_mode: CullFace::Back,
+            }
+        }
     }
 }
 
-/// Composition pass uniforms.
-#[repr(C)]
-#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct CompositionUniforms {
-    /// Ambient colour (rgb) + AO strength (a).
-    pub ambient_ao: [f32; 4],
-    /// Exposure (x), gamma (y), padding (zw).
-    pub exposure_gamma: [f32; 4],
-}
-
-// ---------------------------------------------------------------------------
-// Stencil optimisation helpers
-// ---------------------------------------------------------------------------
-
-/// Stencil reference values for the deferred pipeline.
-pub mod stencil {
-    /// Stencil value written during the geometry pass to mark pixels with
-    /// geometry (non-sky pixels).
-    pub const GEOMETRY_BIT: u32 = 0x01;
-
-    /// Stencil value for lit pixels (used by light volume stencil pass).
-    pub const LIT_BIT: u32 = 0x02;
-
-    /// Stencil function: equal to reference.
-    pub const FUNC_EQUAL: u32 = 0;
-    /// Stencil function: not equal to reference.
-    pub const FUNC_NOT_EQUAL: u32 = 1;
-    /// Stencil function: always pass.
-    pub const FUNC_ALWAYS: u32 = 2;
-
-    /// Stencil op: keep.
-    pub const OP_KEEP: u32 = 0;
-    /// Stencil op: replace with reference.
-    pub const OP_REPLACE: u32 = 1;
-    /// Stencil op: increment and clamp.
-    pub const OP_INCR: u32 = 2;
-    /// Stencil op: decrement and clamp.
-    pub const OP_DECR: u32 = 3;
-    /// Stencil op: invert.
-    pub const OP_INVERT: u32 = 4;
-}
-
-// ---------------------------------------------------------------------------
-// DeferredRenderer
-// ---------------------------------------------------------------------------
-
-/// Render pass descriptor for the deferred pipeline.
+/// Stencil operations for GPU state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DeferredPass {
-    /// Geometry pass: render opaque meshes into G-Buffer.
-    Geometry,
-    /// Lighting pass: evaluate per-light contribution.
-    Lighting,
-    /// Composition pass: combine lighting + ambient + emissive + AO.
-    Composition,
-    /// Forward pass: render transparent objects on top.
-    Forward,
+pub enum StencilOp {
+    Keep,
+    Zero,
+    Replace,
+    IncrementClamp,
+    DecrementClamp,
+    IncrementWrap,
+    DecrementWrap,
+    Invert,
 }
 
-/// Configuration for the deferred renderer.
+/// Cull face mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CullFace {
+    None,
+    Front,
+    Back,
+}
+
+/// Combined stencil/depth state for rendering light volumes.
+#[derive(Debug, Clone, Copy)]
+pub struct StencilState {
+    pub stencil_test: bool,
+    pub stencil_op_fail: StencilOp,
+    pub stencil_op_depth_fail: StencilOp,
+    pub stencil_op_pass: StencilOp,
+    pub reference: u8,
+    pub read_mask: u8,
+    pub write_mask: u8,
+    pub depth_test: bool,
+    pub cull_mode: CullFace,
+}
+
+/// Manages a list of stencil light volumes for rendering.
+#[derive(Debug)]
+pub struct StencilLightVolumeManager {
+    /// All light volumes for the current frame.
+    pub volumes: Vec<StencilLightVolume>,
+    /// Number of directional lights (rendered as full-screen quads).
+    pub directional_count: u32,
+    /// Number of point lights.
+    pub point_count: u32,
+    /// Number of spot lights.
+    pub spot_count: u32,
+    /// Number of area lights.
+    pub area_count: u32,
+    /// Sphere mesh vertex count for point light volumes.
+    pub sphere_vertex_count: u32,
+    /// Cone mesh vertex count for spot light volumes.
+    pub cone_vertex_count: u32,
+}
+
+impl StencilLightVolumeManager {
+    /// Create a new empty manager.
+    pub fn new() -> Self {
+        Self {
+            volumes: Vec::new(),
+            directional_count: 0,
+            point_count: 0,
+            spot_count: 0,
+            area_count: 0,
+            sphere_vertex_count: 0,
+            cone_vertex_count: 0,
+        }
+    }
+
+    /// Clear all volumes for a new frame.
+    pub fn clear(&mut self) {
+        self.volumes.clear();
+        self.directional_count = 0;
+        self.point_count = 0;
+        self.spot_count = 0;
+        self.area_count = 0;
+    }
+
+    /// Add a light volume.
+    pub fn add_volume(&mut self, volume: StencilLightVolume) {
+        match volume.volume_type {
+            LightVolumeType::FullScreenQuad => self.directional_count += 1,
+            LightVolumeType::Sphere => self.point_count += 1,
+            LightVolumeType::Cone => self.spot_count += 1,
+            LightVolumeType::OrientedBox => self.area_count += 1,
+            LightVolumeType::CustomMesh => {}
+        }
+        self.volumes.push(volume);
+    }
+
+    /// Update camera-inside tests for all volumes.
+    pub fn update_camera_tests(&mut self, camera_pos: Vec3) {
+        for volume in &mut self.volumes {
+            volume.test_camera_inside(camera_pos);
+        }
+    }
+
+    /// Sort volumes: directionals first, then by distance to camera.
+    pub fn sort_for_rendering(&mut self, camera_pos: Vec3) {
+        self.volumes.sort_by(|a, b| {
+            let a_order = match a.volume_type {
+                LightVolumeType::FullScreenQuad => 0u32,
+                _ => 1,
+            };
+            let b_order = match b.volume_type {
+                LightVolumeType::FullScreenQuad => 0u32,
+                _ => 1,
+            };
+            if a_order != b_order {
+                return a_order.cmp(&b_order);
+            }
+            let a_dist = (a.position - camera_pos).length_squared();
+            let b_dist = (b.position - camera_pos).length_squared();
+            a_dist.partial_cmp(&b_dist).unwrap_or(std::cmp::Ordering::Equal)
+        });
+    }
+
+    /// Get volumes that need stencil marking (non-fullscreen, camera outside).
+    pub fn stencil_mark_volumes(&self) -> Vec<&StencilLightVolume> {
+        self.volumes
+            .iter()
+            .filter(|v| {
+                v.volume_type != LightVolumeType::FullScreenQuad && !v.camera_inside
+            })
+            .collect()
+    }
+
+    /// Total volume count.
+    pub fn total_count(&self) -> usize {
+        self.volumes.len()
+    }
+}
+
+impl Default for StencilLightVolumeManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Light pre-pass (deferred lighting)
+// ---------------------------------------------------------------------------
+
+/// Configuration for the light pre-pass technique.
+///
+/// In a light pre-pass, the lighting equation is split:
+/// 1. Geometry pass: write normals + depth only (minimal G-buffer).
+/// 2. Light pass: accumulate diffuse + specular lighting into a light buffer.
+/// 3. Material pass: re-render geometry, sampling the light buffer and applying materials.
+///
+/// This allows more material variety than standard deferred since material data
+/// doesn't need to fit in the G-buffer.
 #[derive(Debug, Clone)]
-pub struct DeferredRendererConfig {
-    /// G-Buffer layout to use.
-    pub gbuffer_layout: GBufferLayout,
-    /// Whether to use stencil optimisation for light volumes.
-    pub use_stencil_optimisation: bool,
-    /// Maximum number of lights to process per frame.
-    pub max_lights: usize,
-    /// Whether to enable emissive in the composition pass.
-    pub enable_emissive: bool,
-    /// Ambient colour (linear RGB).
-    pub ambient_color: Vec3,
-    /// Ambient intensity.
-    pub ambient_intensity: f32,
-    /// Whether to render a forward pass for transparent objects.
-    pub enable_forward_pass: bool,
+pub struct LightPrePassConfig {
+    /// Normal buffer format.
+    pub normal_format: TextureFormat,
+    /// Depth format.
+    pub depth_format: TextureFormat,
+    /// Diffuse light accumulation format.
+    pub diffuse_light_format: TextureFormat,
+    /// Specular light accumulation format.
+    pub specular_light_format: TextureFormat,
+    /// Whether to use half-resolution light pass.
+    pub half_res_lighting: bool,
+    /// Whether to reconstruct position from depth (saves a G-buffer target).
+    pub reconstruct_position: bool,
+    /// Shininess/specular power encoding mode.
+    pub specular_power_mode: SpecularPowerMode,
 }
 
-impl Default for DeferredRendererConfig {
+/// How specular power is encoded in the light pre-pass.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpecularPowerMode {
+    /// Store specular power in the normal buffer alpha channel.
+    InNormalAlpha,
+    /// Use a fixed specular power for all surfaces.
+    Fixed,
+    /// Store in a separate 8-bit channel.
+    Separate,
+}
+
+impl Default for LightPrePassConfig {
     fn default() -> Self {
         Self {
-            gbuffer_layout: GBufferLayout::default(),
-            use_stencil_optimisation: true,
-            max_lights: MAX_LIGHTS,
-            enable_emissive: true,
-            ambient_color: Vec3::new(0.03, 0.03, 0.04),
-            ambient_intensity: 1.0,
-            enable_forward_pass: true,
+            normal_format: TextureFormat::Rgba16Float,
+            depth_format: TextureFormat::Depth32Float,
+            diffuse_light_format: TextureFormat::Rgba16Float,
+            specular_light_format: TextureFormat::Rgba16Float,
+            half_res_lighting: false,
+            reconstruct_position: true,
+            specular_power_mode: SpecularPowerMode::InNormalAlpha,
         }
     }
 }
 
-/// The deferred renderer orchestrates the multi-pass deferred pipeline.
-pub struct DeferredRenderer {
-    /// Configuration.
-    pub config: DeferredRendererConfig,
-    /// G-Buffer.
-    pub gbuffer: GBuffer,
-    /// Light accumulation buffer handle.
-    pub light_accumulation_rt: u64,
-    /// Sphere mesh for point light volumes.
-    sphere_vertices: Vec<LightVolumeVertex>,
-    sphere_indices: Vec<u32>,
-    /// Cone mesh for spot light volumes.
-    cone_vertices: Vec<LightVolumeVertex>,
-    cone_indices: Vec<u32>,
-    /// Fullscreen triangle for directional lights and composition.
-    fullscreen_vertices: Vec<LightVolumeVertex>,
-    fullscreen_indices: Vec<u32>,
-    /// Current width.
-    width: u32,
-    /// Current height.
-    height: u32,
-    /// Frame counter.
-    frame_index: u64,
-    /// Previous frame view-projection matrix (for motion vectors).
-    prev_view_projection: Mat4,
+impl LightPrePassConfig {
+    /// Mobile-friendly config with lower precision.
+    pub fn mobile() -> Self {
+        Self {
+            normal_format: TextureFormat::Rgb10A2Unorm,
+            depth_format: TextureFormat::Depth32Float,
+            diffuse_light_format: TextureFormat::Rg11B10Float,
+            specular_light_format: TextureFormat::Rg11B10Float,
+            half_res_lighting: true,
+            reconstruct_position: true,
+            specular_power_mode: SpecularPowerMode::Fixed,
+        }
+    }
+
+    /// High-quality config with full precision.
+    pub fn high_quality() -> Self {
+        Self {
+            normal_format: TextureFormat::Rgba16Float,
+            depth_format: TextureFormat::Depth32Float,
+            diffuse_light_format: TextureFormat::Rgba16Float,
+            specular_light_format: TextureFormat::Rgba16Float,
+            half_res_lighting: false,
+            reconstruct_position: true,
+            specular_power_mode: SpecularPowerMode::InNormalAlpha,
+        }
+    }
 }
 
-impl DeferredRenderer {
-    /// Create a new deferred renderer.
-    pub fn new(width: u32, height: u32, config: DeferredRendererConfig) -> Self {
-        let gbuffer = GBuffer::new(width, height, config.gbuffer_layout.clone());
+/// The light pre-pass pipeline state and buffers.
+#[derive(Debug)]
+pub struct LightPrePass {
+    /// Configuration.
+    pub config: LightPrePassConfig,
+    /// Normal render target handle.
+    pub normal_rt: u64,
+    /// Depth render target handle.
+    pub depth_rt: u64,
+    /// Diffuse light accumulation render target.
+    pub diffuse_light_rt: u64,
+    /// Specular light accumulation render target.
+    pub specular_light_rt: u64,
+    /// Resolution of the light buffers.
+    pub light_buffer_resolution: UVec2,
+    /// Resolution of the full-res geometry pass.
+    pub geometry_resolution: UVec2,
+    /// Inverse projection matrix for position reconstruction.
+    pub inverse_projection: Mat4,
+    /// Inverse view matrix for position reconstruction.
+    pub inverse_view: Mat4,
+    /// Number of lights processed in the last frame.
+    pub lights_processed: u32,
+    /// Current frame index.
+    pub frame_index: u64,
+}
 
-        let (sphere_v, sphere_i) = generate_sphere_volume(16, 12);
-        let (cone_v, cone_i) = generate_cone_volume(16, std::f32::consts::FRAC_PI_4, 1.0);
-        let (fs_v, fs_i) = generate_fullscreen_triangle();
-
+impl LightPrePass {
+    /// Create a new light pre-pass pipeline.
+    pub fn new(config: LightPrePassConfig, width: u32, height: u32) -> Self {
+        let light_res = if config.half_res_lighting {
+            UVec2::new(width / 2, height / 2)
+        } else {
+            UVec2::new(width, height)
+        };
         Self {
             config,
-            gbuffer,
-            light_accumulation_rt: 0,
-            sphere_vertices: sphere_v,
-            sphere_indices: sphere_i,
-            cone_vertices: cone_v,
-            cone_indices: cone_i,
-            fullscreen_vertices: fs_v,
-            fullscreen_indices: fs_i,
-            width,
-            height,
+            normal_rt: 0,
+            depth_rt: 0,
+            diffuse_light_rt: 0,
+            specular_light_rt: 0,
+            light_buffer_resolution: light_res,
+            geometry_resolution: UVec2::new(width, height),
+            inverse_projection: Mat4::IDENTITY,
+            inverse_view: Mat4::IDENTITY,
+            lights_processed: 0,
             frame_index: 0,
-            prev_view_projection: Mat4::IDENTITY,
         }
     }
 
-    /// Create with default configuration.
-    pub fn with_defaults(width: u32, height: u32) -> Self {
-        Self::new(width, height, DeferredRendererConfig::default())
+    /// Resize the pipeline.
+    pub fn resize(&mut self, width: u32, height: u32) {
+        self.geometry_resolution = UVec2::new(width, height);
+        self.light_buffer_resolution = if self.config.half_res_lighting {
+            UVec2::new(width / 2, height / 2)
+        } else {
+            UVec2::new(width, height)
+        };
     }
 
-    /// Resize render targets.
-    pub fn resize(&mut self, width: u32, height: u32) {
-        self.width = width;
-        self.height = height;
-        self.gbuffer.resize(width, height);
-        self.light_accumulation_rt = 0;
+    /// Update camera matrices for position reconstruction.
+    pub fn update_matrices(&mut self, view: Mat4, projection: Mat4) {
+        self.inverse_view = view.inverse();
+        self.inverse_projection = projection.inverse();
+    }
+
+    /// Reconstruct world position from depth and UV.
+    pub fn reconstruct_position(&self, uv: Vec2, depth: f32) -> Vec3 {
+        let ndc = Vec4::new(uv.x * 2.0 - 1.0, (1.0 - uv.y) * 2.0 - 1.0, depth, 1.0);
+        let view_pos = self.inverse_projection * ndc;
+        let view_pos = view_pos / view_pos.w;
+        let world_pos = self.inverse_view * view_pos;
+        world_pos.truncate()
     }
 
     /// Begin a new frame.
     pub fn begin_frame(&mut self) {
-        self.frame_index = self.frame_index.wrapping_add(1);
+        self.lights_processed = 0;
+        self.frame_index += 1;
     }
 
-    /// End the frame, saving the current VP for next frame's motion vectors.
-    pub fn end_frame(&mut self, current_view_projection: Mat4) {
-        self.prev_view_projection = current_view_projection;
+    /// Record that a light was processed.
+    pub fn record_light(&mut self) {
+        self.lights_processed += 1;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tiled deferred shading
+// ---------------------------------------------------------------------------
+
+/// A screen-space tile that contains a list of affecting lights.
+#[derive(Debug, Clone)]
+pub struct Tile {
+    /// Tile X index in the grid.
+    pub x: u32,
+    /// Tile Y index in the grid.
+    pub y: u32,
+    /// Screen-space bounds of this tile (min_x, min_y, max_x, max_y).
+    pub bounds: [u32; 4],
+    /// Indices of lights affecting this tile.
+    pub light_indices: Vec<u16>,
+    /// Min depth in this tile.
+    pub min_depth: f32,
+    /// Max depth in this tile.
+    pub max_depth: f32,
+}
+
+impl Tile {
+    /// Create a new empty tile.
+    pub fn new(x: u32, y: u32, min_x: u32, min_y: u32, max_x: u32, max_y: u32) -> Self {
+        Self {
+            x,
+            y,
+            bounds: [min_x, min_y, max_x, max_y],
+            light_indices: Vec::new(),
+            min_depth: 1.0,
+            max_depth: 0.0,
+        }
     }
 
-    /// Get the previous frame's view-projection matrix.
-    pub fn prev_view_projection(&self) -> Mat4 {
-        self.prev_view_projection
+    /// Clear the tile for a new frame.
+    pub fn clear(&mut self) {
+        self.light_indices.clear();
+        self.min_depth = 1.0;
+        self.max_depth = 0.0;
     }
 
-    /// Current frame index.
-    pub fn frame_index(&self) -> u64 {
-        self.frame_index
+    /// Add a light index to this tile.
+    pub fn add_light(&mut self, index: u16) {
+        if self.light_indices.len() < MAX_LIGHTS_PER_TILE {
+            self.light_indices.push(index);
+        }
     }
 
-    /// Width.
-    pub fn width(&self) -> u32 { self.width }
-    /// Height.
-    pub fn height(&self) -> u32 { self.height }
-
-    /// Prepare geometry pass uniforms for an object.
-    pub fn prepare_geometry_uniforms(
-        &self,
-        model: Mat4,
-        prev_model: Mat4,
-        base_color: Vec4,
-        metallic: f32,
-        roughness: f32,
-        ao: f32,
-        emissive_color: Vec3,
-        emissive_intensity: f32,
-    ) -> GeometryPassUniforms {
-        GeometryPassUniforms::from_model(
-            model, prev_model, base_color,
-            metallic, roughness, ao,
-            emissive_color, emissive_intensity,
-        )
+    /// Returns the number of lights in this tile.
+    pub fn light_count(&self) -> usize {
+        self.light_indices.len()
     }
 
-    /// Prepare camera uniforms for the current frame.
-    pub fn prepare_camera_uniforms(
-        &self,
-        view: Mat4,
-        projection: Mat4,
-        camera_pos: Vec3,
-        near: f32,
-        far: f32,
-    ) -> DeferredCameraUniforms {
-        DeferredCameraUniforms::from_matrices(
-            view, projection,
-            self.prev_view_projection,
-            camera_pos, near, far,
-            self.width, self.height,
-        )
+    /// Update the depth range from a depth sample.
+    pub fn update_depth(&mut self, depth: f32) {
+        if depth < self.min_depth {
+            self.min_depth = depth;
+        }
+        if depth > self.max_depth {
+            self.max_depth = depth;
+        }
     }
 
-    /// Classify lights and prepare uniforms for the lighting pass.
+    /// Check if a sphere (light volume) intersects this tile's frustum.
+    pub fn intersects_sphere_screen(&self, center_screen: Vec2, radius_screen: f32) -> bool {
+        let tile_min = Vec2::new(self.bounds[0] as f32, self.bounds[1] as f32);
+        let tile_max = Vec2::new(self.bounds[2] as f32, self.bounds[3] as f32);
+        let closest = Vec2::new(
+            center_screen.x.clamp(tile_min.x, tile_max.x),
+            center_screen.y.clamp(tile_min.y, tile_max.y),
+        );
+        let dist_sq = (center_screen - closest).length_squared();
+        dist_sq < radius_screen * radius_screen
+    }
+}
+
+/// GPU-friendly light data for tiled/clustered shading.
+#[derive(Debug, Clone, Copy)]
+pub struct TiledLight {
+    /// Position (XYZ) and radius (W) in view space.
+    pub position_radius: Vec4,
+    /// Color (RGB) and intensity (A).
+    pub color_intensity: Vec4,
+    /// Direction (XYZ) and cos(outer_angle) (W) -- for spot lights.
+    pub direction_angle: Vec4,
+    /// Light type (0=point, 1=spot, 2=directional) and additional flags.
+    pub type_flags: u32,
+    /// Shadow map index (-1 if no shadow).
+    pub shadow_index: i32,
+    /// Attenuation parameters.
+    pub attenuation: Vec2,
+}
+
+impl TiledLight {
+    /// Create a point light for tiled shading.
+    pub fn point(position: Vec3, radius: f32, color: Vec3, intensity: f32) -> Self {
+        Self {
+            position_radius: Vec4::new(position.x, position.y, position.z, radius),
+            color_intensity: Vec4::new(color.x, color.y, color.z, intensity),
+            direction_angle: Vec4::ZERO,
+            type_flags: 0,
+            shadow_index: -1,
+            attenuation: Vec2::new(1.0, radius * radius),
+        }
+    }
+
+    /// Create a spot light for tiled shading.
+    pub fn spot(
+        position: Vec3,
+        direction: Vec3,
+        radius: f32,
+        outer_angle: f32,
+        inner_angle: f32,
+        color: Vec3,
+        intensity: f32,
+    ) -> Self {
+        Self {
+            position_radius: Vec4::new(position.x, position.y, position.z, radius),
+            color_intensity: Vec4::new(color.x, color.y, color.z, intensity),
+            direction_angle: Vec4::new(direction.x, direction.y, direction.z, outer_angle.cos()),
+            type_flags: 1,
+            shadow_index: -1,
+            attenuation: Vec2::new(inner_angle.cos(), outer_angle.cos()),
+        }
+    }
+
+    /// Create a directional light for tiled shading.
+    pub fn directional(direction: Vec3, color: Vec3, intensity: f32) -> Self {
+        Self {
+            position_radius: Vec4::new(0.0, 0.0, 0.0, f32::MAX),
+            color_intensity: Vec4::new(color.x, color.y, color.z, intensity),
+            direction_angle: Vec4::new(direction.x, direction.y, direction.z, -1.0),
+            type_flags: 2,
+            shadow_index: -1,
+            attenuation: Vec2::ZERO,
+        }
+    }
+
+    /// Set the shadow map index.
+    pub fn with_shadow(mut self, index: i32) -> Self {
+        self.shadow_index = index;
+        self
+    }
+
+    /// Check if this light is a directional light.
+    pub fn is_directional(&self) -> bool {
+        self.type_flags == 2
+    }
+
+    /// Get the light radius.
+    pub fn radius(&self) -> f32 {
+        self.position_radius.w
+    }
+
+    /// Get the light position (view space).
+    pub fn position(&self) -> Vec3 {
+        self.position_radius.truncate()
+    }
+}
+
+/// Configuration for the tiled deferred pipeline.
+#[derive(Debug, Clone)]
+pub struct TiledDeferredConfig {
+    /// Tile size in pixels (usually 16 or 32).
+    pub tile_size: u32,
+    /// Whether to use depth bounds for tighter culling.
+    pub use_depth_bounds: bool,
+    /// Whether to use 2.5D culling (per-tile depth range).
+    pub use_depth_range_culling: bool,
+    /// Maximum lights per tile before fallback.
+    pub max_lights_per_tile: usize,
+    /// Whether to use compute shader for light culling.
+    pub compute_culling: bool,
+    /// Whether to output a debug heatmap of light counts.
+    pub debug_heatmap: bool,
+    /// Debug heatmap maximum light count for colour scale.
+    pub debug_heatmap_max: u32,
+}
+
+impl Default for TiledDeferredConfig {
+    fn default() -> Self {
+        Self {
+            tile_size: DEFAULT_TILE_SIZE,
+            use_depth_bounds: true,
+            use_depth_range_culling: true,
+            max_lights_per_tile: MAX_LIGHTS_PER_TILE,
+            compute_culling: true,
+            debug_heatmap: false,
+            debug_heatmap_max: 64,
+        }
+    }
+}
+
+/// The tiled deferred shading pipeline.
+#[derive(Debug)]
+pub struct TiledDeferredPipeline {
+    /// Configuration.
+    pub config: TiledDeferredConfig,
+    /// Screen resolution.
+    pub resolution: UVec2,
+    /// Grid dimensions in tiles.
+    pub grid_dims: UVec2,
+    /// All tiles in row-major order.
+    pub tiles: Vec<Tile>,
+    /// All lights for the current frame.
+    pub lights: Vec<TiledLight>,
+    /// Flat light index list (GPU buffer data).
+    /// Format: for each tile, a contiguous run of u16 light indices.
+    pub light_index_list: Vec<u16>,
+    /// Per-tile offset+count into the light_index_list.
+    /// Each entry: (offset, count).
+    pub tile_light_table: Vec<(u32, u32)>,
+    /// Statistics for the last frame.
+    pub stats: TiledDeferredStats,
+}
+
+/// Statistics for the tiled deferred pipeline.
+#[derive(Debug, Clone, Default)]
+pub struct TiledDeferredStats {
+    /// Total number of tiles.
+    pub total_tiles: u32,
+    /// Number of tiles with at least one light.
+    pub lit_tiles: u32,
+    /// Maximum lights in any single tile.
+    pub max_lights_in_tile: u32,
+    /// Average lights per lit tile.
+    pub avg_lights_per_tile: f32,
+    /// Total light-tile pairs (sum of all per-tile light counts).
+    pub total_light_tile_pairs: u32,
+    /// Number of lights culled by depth range.
+    pub depth_culled_count: u32,
+    /// Time in microseconds for light culling.
+    pub culling_time_us: f64,
+}
+
+impl TiledDeferredPipeline {
+    /// Create a new tiled deferred pipeline.
+    pub fn new(config: TiledDeferredConfig, width: u32, height: u32) -> Self {
+        let grid_x = (width + config.tile_size - 1) / config.tile_size;
+        let grid_y = (height + config.tile_size - 1) / config.tile_size;
+        let tile_count = (grid_x * grid_y) as usize;
+
+        let mut tiles = Vec::with_capacity(tile_count);
+        for ty in 0..grid_y {
+            for tx in 0..grid_x {
+                let min_x = tx * config.tile_size;
+                let min_y = ty * config.tile_size;
+                let max_x = ((tx + 1) * config.tile_size).min(width);
+                let max_y = ((ty + 1) * config.tile_size).min(height);
+                tiles.push(Tile::new(tx, ty, min_x, min_y, max_x, max_y));
+            }
+        }
+
+        Self {
+            config,
+            resolution: UVec2::new(width, height),
+            grid_dims: UVec2::new(grid_x, grid_y),
+            tiles,
+            lights: Vec::new(),
+            light_index_list: Vec::new(),
+            tile_light_table: vec![(0, 0); tile_count],
+            stats: TiledDeferredStats::default(),
+        }
+    }
+
+    /// Resize the pipeline for a new screen resolution.
+    pub fn resize(&mut self, width: u32, height: u32) {
+        let grid_x = (width + self.config.tile_size - 1) / self.config.tile_size;
+        let grid_y = (height + self.config.tile_size - 1) / self.config.tile_size;
+        let tile_count = (grid_x * grid_y) as usize;
+
+        self.resolution = UVec2::new(width, height);
+        self.grid_dims = UVec2::new(grid_x, grid_y);
+        self.tiles.clear();
+        for ty in 0..grid_y {
+            for tx in 0..grid_x {
+                let min_x = tx * self.config.tile_size;
+                let min_y = ty * self.config.tile_size;
+                let max_x = ((tx + 1) * self.config.tile_size).min(width);
+                let max_y = ((ty + 1) * self.config.tile_size).min(height);
+                self.tiles.push(Tile::new(tx, ty, min_x, min_y, max_x, max_y));
+            }
+        }
+        self.tile_light_table.resize(tile_count, (0, 0));
+    }
+
+    /// Begin a new frame: clear tiles and lights.
+    pub fn begin_frame(&mut self) {
+        for tile in &mut self.tiles {
+            tile.clear();
+        }
+        self.lights.clear();
+        self.light_index_list.clear();
+        for entry in &mut self.tile_light_table {
+            *entry = (0, 0);
+        }
+        self.stats = TiledDeferredStats::default();
+        self.stats.total_tiles = self.tiles.len() as u32;
+    }
+
+    /// Add a light for this frame.
+    pub fn add_light(&mut self, light: TiledLight) {
+        if self.lights.len() < MAX_TILED_LIGHTS {
+            self.lights.push(light);
+        }
+    }
+
+    /// Perform CPU-side light culling against all tiles.
     ///
-    /// Returns a list of (DeferredPass type, LightPassUniforms) for each
-    /// light, grouped by their rendering strategy.
-    pub fn prepare_light_uniforms(&self, lights: &[Light]) -> Vec<(LightType, LightPassUniforms)> {
-        let mut result = Vec::with_capacity(lights.len().min(self.config.max_lights));
+    /// This is the fallback path when compute culling is not available.
+    /// For each light, test against each tile's screen-space bounds.
+    pub fn cull_lights_cpu(&mut self, view: Mat4, projection: Mat4) {
+        let start = std::time::Instant::now();
+        let vp = projection * view;
+        let half_res = Vec2::new(self.resolution.x as f32 * 0.5, self.resolution.y as f32 * 0.5);
 
-        for light in lights.iter().take(self.config.max_lights) {
-            let uniforms = match light {
-                Light::Directional(_) => {
-                    LightPassUniforms::from_directional(light)
+        for (light_idx, light) in self.lights.iter().enumerate() {
+            if light.is_directional() {
+                // Directional lights affect all tiles
+                for tile in &mut self.tiles {
+                    tile.add_light(light_idx as u16);
                 }
-                Light::Point(p) => {
-                    LightPassUniforms::from_point_light(light, p.position, p.radius)
-                }
-                Light::Spot(s) => {
-                    LightPassUniforms::from_spot_light(
-                        light, s.position, s.direction, s.range, s.outer_angle,
-                    )
-                }
-                Light::Area(a) => {
-                    // Area lights rendered as point lights with large radius.
-                    LightPassUniforms::from_point_light(light, a.position, a.range)
-                }
+                continue;
+            }
+
+            let pos = light.position();
+            let radius = light.radius();
+
+            // Project light sphere center to screen space
+            let clip = vp * Vec4::new(pos.x, pos.y, pos.z, 1.0);
+            if clip.w <= EPSILON {
+                continue; // Behind camera
+            }
+            let ndc = Vec3::new(clip.x / clip.w, clip.y / clip.w, clip.z / clip.w);
+            if ndc.z < 0.0 || ndc.z > 1.0 {
+                continue; // Outside depth range (conservative)
+            }
+
+            let screen_center = Vec2::new(
+                (ndc.x + 1.0) * half_res.x,
+                (1.0 - ndc.y) * half_res.y,
+            );
+
+            // Approximate screen-space radius
+            let dist = (view * Vec4::new(pos.x, pos.y, pos.z, 1.0)).z.abs();
+            let screen_radius = if dist > EPSILON {
+                (radius / dist) * half_res.x
+            } else {
+                half_res.x * 2.0
             };
 
-            result.push((light.light_type(), uniforms));
+            let mut depth_culled = 0u32;
+            for tile in &mut self.tiles {
+                if tile.intersects_sphere_screen(screen_center, screen_radius) {
+                    // Depth range culling
+                    if self.config.use_depth_range_culling {
+                        let light_z = ndc.z;
+                        let light_z_min = (light_z - radius * 0.01).max(0.0);
+                        let light_z_max = (light_z + radius * 0.01).min(1.0);
+                        if light_z_min > tile.max_depth || light_z_max < tile.min_depth {
+                            depth_culled += 1;
+                            continue;
+                        }
+                    }
+                    tile.add_light(light_idx as u16);
+                }
+            }
+            self.stats.depth_culled_count += depth_culled;
         }
 
-        result
+        // Build the flat light index list and per-tile table.
+        self.build_light_index_list();
+
+        let elapsed = start.elapsed();
+        self.stats.culling_time_us = elapsed.as_secs_f64() * 1_000_000.0;
     }
 
-    /// Prepare composition uniforms.
-    pub fn prepare_composition_uniforms(
+    /// Build the flat GPU-friendly light index list from per-tile light lists.
+    fn build_light_index_list(&mut self) {
+        self.light_index_list.clear();
+        let mut lit_tiles = 0u32;
+        let mut max_lights = 0u32;
+        let mut total_pairs = 0u32;
+
+        for (tile_idx, tile) in self.tiles.iter().enumerate() {
+            let offset = self.light_index_list.len() as u32;
+            let count = tile.light_count() as u32;
+            if tile_idx < self.tile_light_table.len() {
+                self.tile_light_table[tile_idx] = (offset, count);
+            }
+            self.light_index_list.extend_from_slice(&tile.light_indices);
+            if count > 0 {
+                lit_tiles += 1;
+                if count > max_lights {
+                    max_lights = count;
+                }
+                total_pairs += count;
+            }
+        }
+
+        self.stats.lit_tiles = lit_tiles;
+        self.stats.max_lights_in_tile = max_lights;
+        self.stats.total_light_tile_pairs = total_pairs;
+        self.stats.avg_lights_per_tile = if lit_tiles > 0 {
+            total_pairs as f32 / lit_tiles as f32
+        } else {
+            0.0
+        };
+    }
+
+    /// Get the tile at the given pixel coordinate.
+    pub fn tile_at_pixel(&self, x: u32, y: u32) -> Option<&Tile> {
+        let tx = x / self.config.tile_size;
+        let ty = y / self.config.tile_size;
+        if tx < self.grid_dims.x && ty < self.grid_dims.y {
+            let idx = (ty * self.grid_dims.x + tx) as usize;
+            self.tiles.get(idx)
+        } else {
+            None
+        }
+    }
+
+    /// Get the number of lights affecting a specific pixel.
+    pub fn light_count_at_pixel(&self, x: u32, y: u32) -> usize {
+        self.tile_at_pixel(x, y)
+            .map(|t| t.light_count())
+            .unwrap_or(0)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Clustered shading
+// ---------------------------------------------------------------------------
+
+/// A cluster in the 3D grid (tile + depth slice).
+#[derive(Debug, Clone)]
+pub struct Cluster {
+    /// Tile X index.
+    pub tile_x: u32,
+    /// Tile Y index.
+    pub tile_y: u32,
+    /// Depth slice index.
+    pub slice: u32,
+    /// AABB min in view space.
+    pub aabb_min: Vec3,
+    /// AABB max in view space.
+    pub aabb_max: Vec3,
+    /// Indices of lights affecting this cluster.
+    pub light_indices: Vec<u16>,
+}
+
+impl Cluster {
+    /// Create a new empty cluster.
+    pub fn new(tile_x: u32, tile_y: u32, slice: u32) -> Self {
+        Self {
+            tile_x,
+            tile_y,
+            slice,
+            aabb_min: Vec3::ZERO,
+            aabb_max: Vec3::ZERO,
+            light_indices: Vec::new(),
+        }
+    }
+
+    /// Clear lights for a new frame.
+    pub fn clear(&mut self) {
+        self.light_indices.clear();
+    }
+
+    /// Add a light to this cluster.
+    pub fn add_light(&mut self, index: u16) {
+        if self.light_indices.len() < MAX_LIGHTS_PER_CLUSTER {
+            self.light_indices.push(index);
+        }
+    }
+
+    /// Test if a view-space sphere intersects this cluster's AABB.
+    pub fn intersects_sphere(&self, center: Vec3, radius: f32) -> bool {
+        let closest = Vec3::new(
+            center.x.clamp(self.aabb_min.x, self.aabb_max.x),
+            center.y.clamp(self.aabb_min.y, self.aabb_max.y),
+            center.z.clamp(self.aabb_min.z, self.aabb_max.z),
+        );
+        (center - closest).length_squared() < radius * radius
+    }
+
+    /// Get the number of lights.
+    pub fn light_count(&self) -> usize {
+        self.light_indices.len()
+    }
+}
+
+/// Configuration for clustered shading.
+#[derive(Debug, Clone)]
+pub struct ClusteredShadingConfig {
+    /// Tile size in pixels.
+    pub tile_size: u32,
+    /// Number of depth slices.
+    pub depth_slices: u32,
+    /// Near plane distance.
+    pub near_plane: f32,
+    /// Far plane distance.
+    pub far_plane: f32,
+    /// Whether to use logarithmic depth slicing (better distribution).
+    pub log_depth_slicing: bool,
+    /// Maximum lights per cluster.
+    pub max_lights_per_cluster: usize,
+    /// Whether to enable debug visualization.
+    pub debug_visualization: bool,
+}
+
+impl Default for ClusteredShadingConfig {
+    fn default() -> Self {
+        Self {
+            tile_size: DEFAULT_TILE_SIZE,
+            depth_slices: DEFAULT_CLUSTER_DEPTH_SLICES,
+            near_plane: 0.1,
+            far_plane: 1000.0,
+            log_depth_slicing: true,
+            max_lights_per_cluster: MAX_LIGHTS_PER_CLUSTER,
+            debug_visualization: false,
+        }
+    }
+}
+
+impl ClusteredShadingConfig {
+    /// Compute the depth at a given slice index.
+    pub fn slice_depth(&self, slice: u32) -> f32 {
+        let t = slice as f32 / self.depth_slices as f32;
+        if self.log_depth_slicing {
+            self.near_plane * (self.far_plane / self.near_plane).powf(t)
+        } else {
+            self.near_plane + (self.far_plane - self.near_plane) * t
+        }
+    }
+
+    /// Find the slice index for a given view-space depth.
+    pub fn depth_to_slice(&self, depth: f32) -> u32 {
+        if depth <= self.near_plane {
+            return 0;
+        }
+        if depth >= self.far_plane {
+            return self.depth_slices - 1;
+        }
+        let t = if self.log_depth_slicing {
+            (depth / self.near_plane).ln() / (self.far_plane / self.near_plane).ln()
+        } else {
+            (depth - self.near_plane) / (self.far_plane - self.near_plane)
+        };
+        ((t * self.depth_slices as f32) as u32).min(self.depth_slices - 1)
+    }
+
+    /// Total number of clusters.
+    pub fn total_clusters(&self, grid_x: u32, grid_y: u32) -> u32 {
+        grid_x * grid_y * self.depth_slices
+    }
+}
+
+/// The clustered shading pipeline.
+#[derive(Debug)]
+pub struct ClusteredShadingPipeline {
+    /// Configuration.
+    pub config: ClusteredShadingConfig,
+    /// Screen resolution.
+    pub resolution: UVec2,
+    /// Grid dimensions in tiles (X, Y).
+    pub grid_dims: UVec2,
+    /// All clusters in a flat array: [tile_y][tile_x][slice].
+    pub clusters: Vec<Cluster>,
+    /// All lights for the current frame.
+    pub lights: Vec<TiledLight>,
+    /// Statistics for the last frame.
+    pub stats: ClusteredShadingStats,
+}
+
+/// Statistics for clustered shading.
+#[derive(Debug, Clone, Default)]
+pub struct ClusteredShadingStats {
+    /// Total number of clusters.
+    pub total_clusters: u32,
+    /// Active clusters (with at least one light).
+    pub active_clusters: u32,
+    /// Maximum lights in any cluster.
+    pub max_lights_in_cluster: u32,
+    /// Average lights per active cluster.
+    pub avg_lights_per_cluster: f32,
+    /// Total light-cluster assignments.
+    pub total_assignments: u32,
+    /// Culling time in microseconds.
+    pub culling_time_us: f64,
+}
+
+impl ClusteredShadingPipeline {
+    /// Create a new clustered shading pipeline.
+    pub fn new(config: ClusteredShadingConfig, width: u32, height: u32) -> Self {
+        let grid_x = (width + config.tile_size - 1) / config.tile_size;
+        let grid_y = (height + config.tile_size - 1) / config.tile_size;
+        let total = config.total_clusters(grid_x, grid_y) as usize;
+
+        let mut clusters = Vec::with_capacity(total);
+        for ty in 0..grid_y {
+            for tx in 0..grid_x {
+                for s in 0..config.depth_slices {
+                    clusters.push(Cluster::new(tx, ty, s));
+                }
+            }
+        }
+
+        Self {
+            config,
+            resolution: UVec2::new(width, height),
+            grid_dims: UVec2::new(grid_x, grid_y),
+            clusters,
+            lights: Vec::new(),
+            stats: ClusteredShadingStats::default(),
+        }
+    }
+
+    /// Resize the pipeline.
+    pub fn resize(&mut self, width: u32, height: u32) {
+        let grid_x = (width + self.config.tile_size - 1) / self.config.tile_size;
+        let grid_y = (height + self.config.tile_size - 1) / self.config.tile_size;
+
+        self.resolution = UVec2::new(width, height);
+        self.grid_dims = UVec2::new(grid_x, grid_y);
+
+        let total = self.config.total_clusters(grid_x, grid_y) as usize;
+        self.clusters.clear();
+        self.clusters.reserve(total);
+        for ty in 0..grid_y {
+            for tx in 0..grid_x {
+                for s in 0..self.config.depth_slices {
+                    self.clusters.push(Cluster::new(tx, ty, s));
+                }
+            }
+        }
+    }
+
+    /// Build cluster AABBs from the camera's inverse projection.
+    pub fn build_cluster_aabbs(&mut self, inv_projection: Mat4) {
+        let tile_size_f = self.config.tile_size as f32;
+        let res_x = self.resolution.x as f32;
+        let res_y = self.resolution.y as f32;
+
+        for cluster in &mut self.clusters {
+            let tx = cluster.tile_x;
+            let ty = cluster.tile_y;
+            let s = cluster.slice;
+
+            let min_x = tx as f32 * tile_size_f / res_x * 2.0 - 1.0;
+            let max_x = ((tx + 1) as f32 * tile_size_f).min(res_x) / res_x * 2.0 - 1.0;
+            let min_y = ty as f32 * tile_size_f / res_y * 2.0 - 1.0;
+            let max_y = ((ty + 1) as f32 * tile_size_f).min(res_y) / res_y * 2.0 - 1.0;
+
+            let near_depth = self.config.slice_depth(s);
+            let far_depth = self.config.slice_depth(s + 1);
+
+            // Convert NDC corners to view space
+            let corners = [
+                unproject_point(inv_projection, Vec3::new(min_x, min_y, 0.0)),
+                unproject_point(inv_projection, Vec3::new(max_x, min_y, 0.0)),
+                unproject_point(inv_projection, Vec3::new(min_x, max_y, 0.0)),
+                unproject_point(inv_projection, Vec3::new(max_x, max_y, 0.0)),
+            ];
+
+            let mut aabb_min = Vec3::splat(f32::MAX);
+            let mut aabb_max = Vec3::splat(f32::MIN);
+
+            for corner in &corners {
+                let dir = corner.normalize_or_zero();
+                let near_pt = dir * near_depth;
+                let far_pt = dir * far_depth;
+                aabb_min = aabb_min.min(near_pt).min(far_pt);
+                aabb_max = aabb_max.max(near_pt).max(far_pt);
+            }
+
+            cluster.aabb_min = aabb_min;
+            cluster.aabb_max = aabb_max;
+        }
+    }
+
+    /// Begin a new frame.
+    pub fn begin_frame(&mut self) {
+        for cluster in &mut self.clusters {
+            cluster.clear();
+        }
+        self.lights.clear();
+        self.stats = ClusteredShadingStats::default();
+        self.stats.total_clusters = self.clusters.len() as u32;
+    }
+
+    /// Add a light.
+    pub fn add_light(&mut self, light: TiledLight) {
+        if self.lights.len() < MAX_TILED_LIGHTS {
+            self.lights.push(light);
+        }
+    }
+
+    /// Perform CPU-side light-to-cluster assignment.
+    pub fn assign_lights_cpu(&mut self, view: Mat4) {
+        let start = std::time::Instant::now();
+
+        for (light_idx, light) in self.lights.iter().enumerate() {
+            if light.is_directional() {
+                for cluster in &mut self.clusters {
+                    cluster.add_light(light_idx as u16);
+                }
+                continue;
+            }
+
+            let pos_world = light.position();
+            let pos_view = (view * Vec4::new(pos_world.x, pos_world.y, pos_world.z, 1.0)).truncate();
+            let radius = light.radius();
+
+            for cluster in &mut self.clusters {
+                if cluster.intersects_sphere(pos_view, radius) {
+                    cluster.add_light(light_idx as u16);
+                }
+            }
+        }
+
+        // Compute statistics
+        let mut active = 0u32;
+        let mut max_lights = 0u32;
+        let mut total = 0u32;
+        for cluster in &self.clusters {
+            let count = cluster.light_count() as u32;
+            if count > 0 {
+                active += 1;
+                total += count;
+                if count > max_lights {
+                    max_lights = count;
+                }
+            }
+        }
+        self.stats.active_clusters = active;
+        self.stats.max_lights_in_cluster = max_lights;
+        self.stats.total_assignments = total;
+        self.stats.avg_lights_per_cluster = if active > 0 {
+            total as f32 / active as f32
+        } else {
+            0.0
+        };
+
+        let elapsed = start.elapsed();
+        self.stats.culling_time_us = elapsed.as_secs_f64() * 1_000_000.0;
+    }
+
+    /// Get the cluster for a given screen pixel and view-space depth.
+    pub fn cluster_at(&self, pixel_x: u32, pixel_y: u32, depth: f32) -> Option<&Cluster> {
+        let tx = pixel_x / self.config.tile_size;
+        let ty = pixel_y / self.config.tile_size;
+        let s = self.config.depth_to_slice(depth);
+        if tx < self.grid_dims.x && ty < self.grid_dims.y {
+            let idx = ((ty * self.grid_dims.x + tx) * self.config.depth_slices + s) as usize;
+            self.clusters.get(idx)
+        } else {
+            None
+        }
+    }
+
+    /// Get the cluster index for a given tile and slice.
+    pub fn cluster_index(&self, tile_x: u32, tile_y: u32, slice: u32) -> usize {
+        ((tile_y * self.grid_dims.x + tile_x) * self.config.depth_slices + slice) as usize
+    }
+}
+
+/// Unproject a point from NDC to view space.
+fn unproject_point(inv_projection: Mat4, ndc: Vec3) -> Vec3 {
+    let p = inv_projection * Vec4::new(ndc.x, ndc.y, ndc.z, 1.0);
+    if p.w.abs() > EPSILON {
+        Vec3::new(p.x / p.w, p.y / p.w, p.z / p.w)
+    } else {
+        Vec3::ZERO
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Cluster debug visualization
+// ---------------------------------------------------------------------------
+
+/// Debug visualization mode for the cluster grid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClusterDebugMode {
+    /// No debug visualization.
+    Off,
+    /// Show light count per cluster as a heatmap overlay.
+    LightCountHeatmap,
+    /// Show cluster slice boundaries as colour bands.
+    SliceBoundaries,
+    /// Show active vs inactive clusters.
+    ActiveClusters,
+    /// Show lights per tile (2D) ignoring depth.
+    TileLightCount,
+    /// Show the depth slice index as a gradient.
+    DepthSliceGradient,
+    /// Show cluster AABBs as wireframes (3D).
+    WireframeAABB,
+}
+
+/// A colour used for debug visualization (linear RGBA).
+#[derive(Debug, Clone, Copy)]
+pub struct DebugColor {
+    pub r: f32,
+    pub g: f32,
+    pub b: f32,
+    pub a: f32,
+}
+
+impl DebugColor {
+    pub const RED: Self = Self { r: 1.0, g: 0.0, b: 0.0, a: 1.0 };
+    pub const GREEN: Self = Self { r: 0.0, g: 1.0, b: 0.0, a: 1.0 };
+    pub const BLUE: Self = Self { r: 0.0, g: 0.0, b: 1.0, a: 1.0 };
+    pub const YELLOW: Self = Self { r: 1.0, g: 1.0, b: 0.0, a: 1.0 };
+    pub const CYAN: Self = Self { r: 0.0, g: 1.0, b: 1.0, a: 1.0 };
+    pub const MAGENTA: Self = Self { r: 1.0, g: 0.0, b: 1.0, a: 1.0 };
+    pub const WHITE: Self = Self { r: 1.0, g: 1.0, b: 1.0, a: 1.0 };
+    pub const BLACK: Self = Self { r: 0.0, g: 0.0, b: 0.0, a: 1.0 };
+    pub const TRANSPARENT: Self = Self { r: 0.0, g: 0.0, b: 0.0, a: 0.0 };
+
+    /// Create a new debug colour.
+    pub fn new(r: f32, g: f32, b: f32, a: f32) -> Self {
+        Self { r, g, b, a }
+    }
+
+    /// Lerp between two colours.
+    pub fn lerp(a: Self, b: Self, t: f32) -> Self {
+        let t = t.clamp(0.0, 1.0);
+        Self {
+            r: a.r + (b.r - a.r) * t,
+            g: a.g + (b.g - a.g) * t,
+            b: a.b + (b.b - a.b) * t,
+            a: a.a + (b.a - a.a) * t,
+        }
+    }
+
+    /// Generate a heatmap colour from a 0-1 value (blue -> green -> yellow -> red).
+    pub fn heatmap(value: f32) -> Self {
+        let v = value.clamp(0.0, 1.0);
+        if v < 0.25 {
+            Self::lerp(Self::BLUE, Self::CYAN, v * 4.0)
+        } else if v < 0.5 {
+            Self::lerp(Self::CYAN, Self::GREEN, (v - 0.25) * 4.0)
+        } else if v < 0.75 {
+            Self::lerp(Self::GREEN, Self::YELLOW, (v - 0.5) * 4.0)
+        } else {
+            Self::lerp(Self::YELLOW, Self::RED, (v - 0.75) * 4.0)
+        }
+    }
+
+    /// Convert to Vec4.
+    pub fn to_vec4(self) -> Vec4 {
+        Vec4::new(self.r, self.g, self.b, self.a)
+    }
+}
+
+/// Cluster debug visualizer that generates a colour per pixel.
+#[derive(Debug)]
+pub struct ClusterDebugVisualizer {
+    /// Current debug mode.
+    pub mode: ClusterDebugMode,
+    /// Maximum light count for heatmap normalisation.
+    pub heatmap_max: u32,
+    /// Overlay opacity.
+    pub overlay_alpha: f32,
+    /// Whether to show grid lines between tiles.
+    pub show_grid_lines: bool,
+    /// Grid line width in pixels.
+    pub grid_line_width: u32,
+    /// Grid line colour.
+    pub grid_line_color: DebugColor,
+    /// Whether to show a text label per tile.
+    pub show_labels: bool,
+    /// Slice colours for the SliceBoundaries mode.
+    pub slice_colors: Vec<DebugColor>,
+}
+
+impl Default for ClusterDebugVisualizer {
+    fn default() -> Self {
+        let mut slice_colors = Vec::with_capacity(DEFAULT_CLUSTER_DEPTH_SLICES as usize);
+        for i in 0..DEFAULT_CLUSTER_DEPTH_SLICES {
+            let hue = i as f32 / DEFAULT_CLUSTER_DEPTH_SLICES as f32;
+            slice_colors.push(DebugColor::heatmap(hue));
+        }
+        Self {
+            mode: ClusterDebugMode::Off,
+            heatmap_max: 64,
+            overlay_alpha: 0.5,
+            show_grid_lines: true,
+            grid_line_width: 1,
+            grid_line_color: DebugColor::WHITE,
+            show_labels: false,
+            slice_colors,
+        }
+    }
+}
+
+impl ClusterDebugVisualizer {
+    /// Create a new visualizer with the given mode.
+    pub fn new(mode: ClusterDebugMode) -> Self {
+        Self {
+            mode,
+            ..Default::default()
+        }
+    }
+
+    /// Get the debug colour for a pixel given the cluster information.
+    pub fn pixel_color(
         &self,
-        exposure: f32,
-        gamma: f32,
-        ao_strength: f32,
-    ) -> CompositionUniforms {
-        let ambient = self.config.ambient_color * self.config.ambient_intensity;
-        CompositionUniforms {
-            ambient_ao: [ambient.x, ambient.y, ambient.z, ao_strength],
-            exposure_gamma: [exposure, gamma, 0.0, 0.0],
+        pixel_x: u32,
+        pixel_y: u32,
+        tile_x: u32,
+        tile_y: u32,
+        slice: u32,
+        light_count: u32,
+        tile_size: u32,
+    ) -> DebugColor {
+        // Grid line check
+        if self.show_grid_lines {
+            let lx = pixel_x % tile_size;
+            let ly = pixel_y % tile_size;
+            if lx < self.grid_line_width || ly < self.grid_line_width {
+                return self.grid_line_color;
+            }
+        }
+
+        match self.mode {
+            ClusterDebugMode::Off => DebugColor::TRANSPARENT,
+            ClusterDebugMode::LightCountHeatmap => {
+                let v = light_count as f32 / self.heatmap_max as f32;
+                let mut c = DebugColor::heatmap(v);
+                c.a = self.overlay_alpha;
+                c
+            }
+            ClusterDebugMode::SliceBoundaries => {
+                let idx = (slice as usize).min(self.slice_colors.len().saturating_sub(1));
+                let mut c = if idx < self.slice_colors.len() {
+                    self.slice_colors[idx]
+                } else {
+                    DebugColor::WHITE
+                };
+                c.a = self.overlay_alpha;
+                c
+            }
+            ClusterDebugMode::ActiveClusters => {
+                let mut c = if light_count > 0 {
+                    DebugColor::GREEN
+                } else {
+                    DebugColor::RED
+                };
+                c.a = self.overlay_alpha * 0.3;
+                c
+            }
+            ClusterDebugMode::TileLightCount => {
+                let v = light_count as f32 / self.heatmap_max as f32;
+                let mut c = DebugColor::heatmap(v);
+                c.a = self.overlay_alpha;
+                c
+            }
+            ClusterDebugMode::DepthSliceGradient => {
+                let v = slice as f32 / DEFAULT_CLUSTER_DEPTH_SLICES as f32;
+                DebugColor::new(v, v, 1.0 - v, self.overlay_alpha)
+            }
+            ClusterDebugMode::WireframeAABB => DebugColor::TRANSPARENT,
         }
     }
 
-    /// Get the sphere volume mesh data (for point lights).
-    pub fn sphere_volume(&self) -> (&[LightVolumeVertex], &[u32]) {
-        (&self.sphere_vertices, &self.sphere_indices)
+    /// Generate wireframe lines for cluster AABBs (for 3D debug drawing).
+    pub fn generate_wireframe_lines(
+        &self,
+        clusters: &[Cluster],
+        max_clusters: usize,
+    ) -> Vec<(Vec3, Vec3, DebugColor)> {
+        let mut lines = Vec::new();
+        let count = clusters.len().min(max_clusters);
+        for cluster in clusters.iter().take(count) {
+            if cluster.light_count() == 0 {
+                continue;
+            }
+            let min = cluster.aabb_min;
+            let max = cluster.aabb_max;
+            let color = DebugColor::heatmap(
+                cluster.light_count() as f32 / self.heatmap_max as f32,
+            );
+
+            // 12 edges of the AABB
+            let corners = [
+                Vec3::new(min.x, min.y, min.z),
+                Vec3::new(max.x, min.y, min.z),
+                Vec3::new(max.x, max.y, min.z),
+                Vec3::new(min.x, max.y, min.z),
+                Vec3::new(min.x, min.y, max.z),
+                Vec3::new(max.x, min.y, max.z),
+                Vec3::new(max.x, max.y, max.z),
+                Vec3::new(min.x, max.y, max.z),
+            ];
+
+            let edges: [(usize, usize); 12] = [
+                (0, 1), (1, 2), (2, 3), (3, 0),
+                (4, 5), (5, 6), (6, 7), (7, 4),
+                (0, 4), (1, 5), (2, 6), (3, 7),
+            ];
+
+            for (a, b) in edges {
+                lines.push((corners[a], corners[b], color));
+            }
+        }
+        lines
     }
 
-    /// Get the cone volume mesh data (for spot lights).
-    pub fn cone_volume(&self) -> (&[LightVolumeVertex], &[u32]) {
-        (&self.cone_vertices, &self.cone_indices)
+    /// Is the visualizer currently active?
+    pub fn is_active(&self) -> bool {
+        self.mode != ClusterDebugMode::Off
     }
 
-    /// Get the fullscreen triangle data.
-    pub fn fullscreen_triangle(&self) -> (&[LightVolumeVertex], &[u32]) {
-        (&self.fullscreen_vertices, &self.fullscreen_indices)
-    }
-
-    /// Estimated GPU memory usage of the G-Buffer.
-    pub fn gbuffer_memory_bytes(&self) -> u64 {
-        self.gbuffer.estimated_memory_bytes()
+    /// Toggle the mode to the next one.
+    pub fn cycle_mode(&mut self) {
+        self.mode = match self.mode {
+            ClusterDebugMode::Off => ClusterDebugMode::LightCountHeatmap,
+            ClusterDebugMode::LightCountHeatmap => ClusterDebugMode::SliceBoundaries,
+            ClusterDebugMode::SliceBoundaries => ClusterDebugMode::ActiveClusters,
+            ClusterDebugMode::ActiveClusters => ClusterDebugMode::TileLightCount,
+            ClusterDebugMode::TileLightCount => ClusterDebugMode::DepthSliceGradient,
+            ClusterDebugMode::DepthSliceGradient => ClusterDebugMode::WireframeAABB,
+            ClusterDebugMode::WireframeAABB => ClusterDebugMode::Off,
+        };
     }
 }
 
 // ---------------------------------------------------------------------------
-// Depth reconstruction helpers
+// Enhanced deferred rendering system (ECS integration)
 // ---------------------------------------------------------------------------
 
-/// Reconstruct view-space position from depth buffer value and screen UV.
-///
-/// # Arguments
-/// - `screen_uv` -- screen coordinates in [0,1]^2.
-/// - `depth` -- hardware depth value [0,1].
-/// - `inv_projection` -- inverse of the projection matrix.
-pub fn reconstruct_view_position(screen_uv: Vec2, depth: f32, inv_projection: &Mat4) -> Vec3 {
-    // Convert screen UV to clip space.
-    let clip_x = screen_uv.x * 2.0 - 1.0;
-    let clip_y = (1.0 - screen_uv.y) * 2.0 - 1.0; // flip Y for RH
-    let clip_pos = Vec4::new(clip_x, clip_y, depth, 1.0);
-
-    // Transform to view space.
-    let view_pos = *inv_projection * clip_pos;
-    Vec3::new(
-        view_pos.x / view_pos.w,
-        view_pos.y / view_pos.w,
-        view_pos.z / view_pos.w,
-    )
+/// Quality preset for the deferred V2 pipeline.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeferredQualityPreset {
+    /// Minimal: thin G-buffer, no tiling, stencil volumes only.
+    Low,
+    /// Standard: thin G-buffer with tiled deferred.
+    Medium,
+    /// High: full G-buffer with clustered shading.
+    High,
+    /// Ultra: full G-buffer, clustered shading, debug features available.
+    Ultra,
 }
 
-/// Reconstruct world-space position from depth buffer.
-pub fn reconstruct_world_position(
-    screen_uv: Vec2,
-    depth: f32,
-    inv_view_projection: &Mat4,
-) -> Vec3 {
-    let clip_x = screen_uv.x * 2.0 - 1.0;
-    let clip_y = (1.0 - screen_uv.y) * 2.0 - 1.0;
-    let clip_pos = Vec4::new(clip_x, clip_y, depth, 1.0);
-    let world_pos = *inv_view_projection * clip_pos;
-    Vec3::new(
-        world_pos.x / world_pos.w,
-        world_pos.y / world_pos.w,
-        world_pos.z / world_pos.w,
-    )
+/// Main configuration for the enhanced deferred renderer.
+#[derive(Debug, Clone)]
+pub struct DeferredV2Config {
+    /// Quality preset.
+    pub quality: DeferredQualityPreset,
+    /// Whether to use the thin G-buffer layout.
+    pub use_thin_gbuffer: bool,
+    /// Whether to use the light pre-pass technique.
+    pub use_light_prepass: bool,
+    /// Whether to use tiled deferred.
+    pub use_tiled_deferred: bool,
+    /// Whether to use clustered shading.
+    pub use_clustered_shading: bool,
+    /// Whether to use stencil light volumes.
+    pub use_stencil_volumes: bool,
+    /// Tile size for tiled/clustered paths.
+    pub tile_size: u32,
+    /// Number of depth slices for clustered path.
+    pub depth_slices: u32,
+    /// Near plane.
+    pub near_plane: f32,
+    /// Far plane.
+    pub far_plane: f32,
+    /// Whether to enable debug visualization.
+    pub debug_mode: ClusterDebugMode,
 }
 
-/// Linearise a hardware depth value (reverse-Z or standard).
-///
-/// For a perspective projection with near and far planes:
-///   linear_depth = near * far / (far - depth * (far - near))
-pub fn linearize_depth(depth: f32, near: f32, far: f32) -> f32 {
-    near * far / (far - depth * (far - near))
+impl Default for DeferredV2Config {
+    fn default() -> Self {
+        Self {
+            quality: DeferredQualityPreset::High,
+            use_thin_gbuffer: true,
+            use_light_prepass: false,
+            use_tiled_deferred: false,
+            use_clustered_shading: true,
+            use_stencil_volumes: true,
+            tile_size: DEFAULT_TILE_SIZE,
+            depth_slices: DEFAULT_CLUSTER_DEPTH_SLICES,
+            near_plane: 0.1,
+            far_plane: 1000.0,
+            debug_mode: ClusterDebugMode::Off,
+        }
+    }
 }
 
-/// Linearise depth for a reverse-Z projection.
-pub fn linearize_depth_reverse_z(depth: f32, near: f32, far: f32) -> f32 {
-    near * far / (near + depth * (far - near))
+impl DeferredV2Config {
+    /// Create a config from a quality preset.
+    pub fn from_preset(preset: DeferredQualityPreset) -> Self {
+        match preset {
+            DeferredQualityPreset::Low => Self {
+                quality: preset,
+                use_thin_gbuffer: true,
+                use_light_prepass: false,
+                use_tiled_deferred: false,
+                use_clustered_shading: false,
+                use_stencil_volumes: true,
+                tile_size: 32,
+                depth_slices: 8,
+                ..Default::default()
+            },
+            DeferredQualityPreset::Medium => Self {
+                quality: preset,
+                use_thin_gbuffer: true,
+                use_light_prepass: false,
+                use_tiled_deferred: true,
+                use_clustered_shading: false,
+                use_stencil_volumes: true,
+                tile_size: 16,
+                depth_slices: 16,
+                ..Default::default()
+            },
+            DeferredQualityPreset::High => Self {
+                quality: preset,
+                use_thin_gbuffer: true,
+                use_light_prepass: false,
+                use_tiled_deferred: false,
+                use_clustered_shading: true,
+                use_stencil_volumes: true,
+                tile_size: 16,
+                depth_slices: 24,
+                ..Default::default()
+            },
+            DeferredQualityPreset::Ultra => Self {
+                quality: preset,
+                use_thin_gbuffer: false,
+                use_light_prepass: false,
+                use_tiled_deferred: false,
+                use_clustered_shading: true,
+                use_stencil_volumes: true,
+                tile_size: 8,
+                depth_slices: 32,
+                ..Default::default()
+            },
+        }
+    }
 }
 
-// ---------------------------------------------------------------------------
-// WGSL shader source for the deferred pipeline
-// ---------------------------------------------------------------------------
-
-/// WGSL shader for the G-Buffer geometry pass.
-pub const GBUFFER_WRITE_WGSL: &str = r#"
-// ---- G-Buffer Geometry Pass Shader ----
-
-struct CameraUniforms {
-    view: mat4x4<f32>,
-    projection: mat4x4<f32>,
-    inv_view: mat4x4<f32>,
-    inv_projection: mat4x4<f32>,
-    view_projection: mat4x4<f32>,
-    prev_view_projection: mat4x4<f32>,
-    camera_pos_near: vec4<f32>,
-    viewport_far: vec4<f32>,
-};
-
-struct ObjectUniforms {
-    model: mat4x4<f32>,
-    normal_matrix: mat4x4<f32>,
-    prev_model: mat4x4<f32>,
-    material_params: vec4<f32>,  // metallic, roughness, ao, emissive_intensity
-    base_color: vec4<f32>,
-    emissive_color: vec4<f32>,
-};
-
-@group(0) @binding(0) var<uniform> camera: CameraUniforms;
-@group(1) @binding(0) var<uniform> object: ObjectUniforms;
-
-struct VertexInput {
-    @location(0) position: vec3<f32>,
-    @location(1) normal: vec3<f32>,
-    @location(2) tangent: vec4<f32>,
-    @location(3) uv: vec2<f32>,
-};
-
-struct VertexOutput {
-    @builtin(position) clip_position: vec4<f32>,
-    @location(0) world_position: vec3<f32>,
-    @location(1) world_normal: vec3<f32>,
-    @location(2) uv: vec2<f32>,
-    @location(3) prev_clip_position: vec4<f32>,
-    @location(4) world_tangent: vec3<f32>,
-    @location(5) tangent_sign: f32,
-};
-
-@vertex
-fn vs_main(in: VertexInput) -> VertexOutput {
-    var out: VertexOutput;
-
-    let world_pos = object.model * vec4<f32>(in.position, 1.0);
-    out.world_position = world_pos.xyz;
-    out.clip_position = camera.view_projection * world_pos;
-
-    // Normal in world space.
-    out.world_normal = normalize((object.normal_matrix * vec4<f32>(in.normal, 0.0)).xyz);
-
-    // Tangent.
-    out.world_tangent = normalize((object.model * vec4<f32>(in.tangent.xyz, 0.0)).xyz);
-    out.tangent_sign = in.tangent.w;
-
-    out.uv = in.uv;
-
-    // Previous clip position for velocity.
-    let prev_world_pos = object.prev_model * vec4<f32>(in.position, 1.0);
-    out.prev_clip_position = camera.prev_view_projection * prev_world_pos;
-
-    return out;
+/// The main enhanced deferred renderer component.
+#[derive(Debug)]
+pub struct DeferredRendererV2 {
+    /// Configuration.
+    pub config: DeferredV2Config,
+    /// Thin G-buffer (if enabled).
+    pub thin_gbuffer: Option<ThinGBuffer>,
+    /// Light pre-pass pipeline (if enabled).
+    pub light_prepass: Option<LightPrePass>,
+    /// Tiled deferred pipeline (if enabled).
+    pub tiled_pipeline: Option<TiledDeferredPipeline>,
+    /// Clustered shading pipeline (if enabled).
+    pub clustered_pipeline: Option<ClusteredShadingPipeline>,
+    /// Stencil light volume manager.
+    pub stencil_volumes: StencilLightVolumeManager,
+    /// Debug visualizer.
+    pub debug_visualizer: ClusterDebugVisualizer,
+    /// Current frame index.
+    pub frame_index: u64,
+    /// Screen resolution.
+    pub resolution: UVec2,
 }
 
-struct GBufferOutput {
-    @location(0) albedo: vec4<f32>,
-    @location(1) normal: vec4<f32>,
-    @location(2) metallic_roughness: vec4<f32>,
-    @location(3) emissive: vec4<f32>,
-    @location(4) velocity: vec2<f32>,
-};
+impl DeferredRendererV2 {
+    /// Create a new deferred renderer with the given configuration.
+    pub fn new(config: DeferredV2Config, width: u32, height: u32) -> Self {
+        let thin_gbuffer = if config.use_thin_gbuffer {
+            Some(ThinGBuffer::new(ThinGBufferLayout::new(width, height)))
+        } else {
+            None
+        };
 
-@fragment
-fn fs_main(in: VertexOutput) -> GBufferOutput {
-    var out: GBufferOutput;
+        let light_prepass = if config.use_light_prepass {
+            Some(LightPrePass::new(LightPrePassConfig::default(), width, height))
+        } else {
+            None
+        };
 
-    // Albedo.
-    out.albedo = object.base_color;
+        let tiled_pipeline = if config.use_tiled_deferred {
+            Some(TiledDeferredPipeline::new(
+                TiledDeferredConfig {
+                    tile_size: config.tile_size,
+                    ..Default::default()
+                },
+                width,
+                height,
+            ))
+        } else {
+            None
+        };
 
-    // World-space normal (pack into [0,1] range).
-    let n = normalize(in.world_normal);
-    out.normal = vec4<f32>(n * 0.5 + 0.5, 1.0);
+        let clustered_pipeline = if config.use_clustered_shading {
+            Some(ClusteredShadingPipeline::new(
+                ClusteredShadingConfig {
+                    tile_size: config.tile_size,
+                    depth_slices: config.depth_slices,
+                    near_plane: config.near_plane,
+                    far_plane: config.far_plane,
+                    ..Default::default()
+                },
+                width,
+                height,
+            ))
+        } else {
+            None
+        };
 
-    // Metallic-roughness-AO.
-    out.metallic_roughness = vec4<f32>(
-        object.material_params.x,  // metallic
-        object.material_params.y,  // roughness
-        object.material_params.z,  // AO
-        1.0,  // material ID / flags
-    );
-
-    // Emissive.
-    out.emissive = vec4<f32>(
-        object.emissive_color.xyz * object.material_params.w,
-        1.0,
-    );
-
-    // Velocity (screen-space motion vector).
-    let current_ndc = in.clip_position.xy / in.clip_position.w;
-    let prev_ndc = in.prev_clip_position.xy / in.prev_clip_position.w;
-    out.velocity = (current_ndc - prev_ndc) * 0.5;
-
-    return out;
-}
-"#;
-
-/// WGSL shader for the deferred lighting resolve pass.
-pub const LIGHTING_RESOLVE_WGSL: &str = r#"
-// ---- Deferred Lighting Resolve Shader ----
-// Reads the G-Buffer textures and evaluates PBR lighting for a single light.
-
-struct CameraUniforms {
-    view: mat4x4<f32>,
-    projection: mat4x4<f32>,
-    inv_view: mat4x4<f32>,
-    inv_projection: mat4x4<f32>,
-    view_projection: mat4x4<f32>,
-    prev_view_projection: mat4x4<f32>,
-    camera_pos_near: vec4<f32>,
-    viewport_far: vec4<f32>,
-};
-
-struct LightUniforms {
-    light_world: mat4x4<f32>,
-    position_type: vec4<f32>,
-    color_intensity: vec4<f32>,
-    direction_range: vec4<f32>,
-    spot_params: vec4<f32>,
-};
-
-@group(0) @binding(0) var<uniform> camera: CameraUniforms;
-@group(0) @binding(1) var<uniform> light: LightUniforms;
-
-@group(1) @binding(0) var gbuffer_albedo: texture_2d<f32>;
-@group(1) @binding(1) var gbuffer_normal: texture_2d<f32>;
-@group(1) @binding(2) var gbuffer_metallic_roughness: texture_2d<f32>;
-@group(1) @binding(3) var gbuffer_depth: texture_depth_2d;
-@group(1) @binding(4) var gbuffer_sampler: sampler;
-
-struct VertexOutput {
-    @builtin(position) position: vec4<f32>,
-    @location(0) screen_uv: vec2<f32>,
-};
-
-// Fullscreen triangle vertex shader.
-@vertex
-fn vs_fullscreen(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
-    var positions = array<vec2<f32>, 3>(
-        vec2<f32>(-1.0, -1.0),
-        vec2<f32>( 3.0, -1.0),
-        vec2<f32>(-1.0,  3.0),
-    );
-
-    var out: VertexOutput;
-    let pos = positions[vertex_index];
-    out.position = vec4<f32>(pos, 0.0, 1.0);
-    out.screen_uv = pos * 0.5 + 0.5;
-    out.screen_uv.y = 1.0 - out.screen_uv.y;
-    return out;
-}
-
-// Light volume vertex shader (for point/spot lights).
-@vertex
-fn vs_light_volume(@location(0) position: vec3<f32>) -> VertexOutput {
-    var out: VertexOutput;
-    let world_pos = light.light_world * vec4<f32>(position, 1.0);
-    out.position = camera.view_projection * world_pos;
-    out.screen_uv = out.position.xy / out.position.w * 0.5 + 0.5;
-    out.screen_uv.y = 1.0 - out.screen_uv.y;
-    return out;
-}
-
-// Reconstruct world position from depth.
-fn reconstruct_world_pos(uv: vec2<f32>, depth: f32) -> vec3<f32> {
-    let clip_x = uv.x * 2.0 - 1.0;
-    let clip_y = (1.0 - uv.y) * 2.0 - 1.0;
-    let clip_pos = vec4<f32>(clip_x, clip_y, depth, 1.0);
-    let inv_vp = camera.inv_view * camera.inv_projection;
-    let world_pos = inv_vp * clip_pos;
-    return world_pos.xyz / world_pos.w;
-}
-
-// GGX Normal Distribution Function.
-fn distribution_ggx(n_dot_h: f32, roughness: f32) -> f32 {
-    let alpha = roughness * roughness;
-    let alpha2 = alpha * alpha;
-    let denom = n_dot_h * n_dot_h * (alpha2 - 1.0) + 1.0;
-    return alpha2 / (3.14159265 * denom * denom + 0.0001);
-}
-
-// Schlick-GGX geometry function.
-fn geometry_schlick_ggx(n_dot_v: f32, roughness: f32) -> f32 {
-    let r = roughness + 1.0;
-    let k = (r * r) / 8.0;
-    return n_dot_v / (n_dot_v * (1.0 - k) + k + 0.0001);
-}
-
-fn geometry_smith(n_dot_v: f32, n_dot_l: f32, roughness: f32) -> f32 {
-    return geometry_schlick_ggx(n_dot_v, roughness) *
-           geometry_schlick_ggx(n_dot_l, roughness);
-}
-
-// Schlick Fresnel approximation.
-fn fresnel_schlick(cos_theta: f32, f0: vec3<f32>) -> vec3<f32> {
-    let t = pow(max(1.0 - cos_theta, 0.0), 5.0);
-    return f0 + (vec3<f32>(1.0) - f0) * t;
-}
-
-// Distance attenuation (inverse-square with smooth windowing).
-fn distance_attenuation(distance: f32, range: f32) -> f32 {
-    let d2 = distance * distance;
-    let r2 = range * range;
-    let ratio = d2 / r2;
-    let factor = max(1.0 - ratio * ratio, 0.0);
-    return factor * factor / max(d2, 0.0001);
-}
-
-// Spot angle attenuation.
-fn spot_attenuation(cos_angle: f32, inner_cos: f32, outer_cos: f32) -> f32 {
-    let t = clamp((cos_angle - outer_cos) / max(inner_cos - outer_cos, 0.0001), 0.0, 1.0);
-    return t * t * (3.0 - 2.0 * t);
-}
-
-@fragment
-fn fs_lighting(in: VertexOutput) -> @location(0) vec4<f32> {
-    let uv = in.screen_uv;
-    let tex_coord = vec2<i32>(vec2<f32>(textureDimensions(gbuffer_albedo)) * uv);
-
-    // Sample G-Buffer.
-    let albedo = textureLoad(gbuffer_albedo, tex_coord, 0).rgb;
-    let normal_packed = textureLoad(gbuffer_normal, tex_coord, 0).rgb;
-    let mr = textureLoad(gbuffer_metallic_roughness, tex_coord, 0);
-    let depth = textureLoad(gbuffer_depth, tex_coord, 0);
-
-    // Decode normal from [0,1] to [-1,1].
-    let normal = normalize(normal_packed * 2.0 - 1.0);
-    let metallic = mr.r;
-    let roughness = max(mr.g, 0.04);
-    let ao = mr.b;
-
-    // Reconstruct world position.
-    let world_pos = reconstruct_world_pos(uv, depth);
-
-    // View direction.
-    let camera_pos = camera.camera_pos_near.xyz;
-    let v = normalize(camera_pos - world_pos);
-
-    // F0 (reflectance at normal incidence).
-    let f0 = mix(vec3<f32>(0.04), albedo, metallic);
-
-    let light_type = u32(light.position_type.w);
-    var radiance = vec3<f32>(0.0);
-
-    // Compute light direction and attenuation based on type.
-    var l = vec3<f32>(0.0);
-    var attenuation = 1.0f;
-
-    if light_type == 0u {
-        // Directional light.
-        l = normalize(light.position_type.xyz);
-        attenuation = 1.0;
-    } else if light_type == 1u {
-        // Point light.
-        let light_pos = light.position_type.xyz;
-        let to_light = light_pos - world_pos;
-        let dist = length(to_light);
-        l = to_light / max(dist, 0.0001);
-        let range = light.direction_range.w;
-        attenuation = distance_attenuation(dist, range);
-    } else if light_type == 2u {
-        // Spot light.
-        let light_pos = light.position_type.xyz;
-        let to_light = light_pos - world_pos;
-        let dist = length(to_light);
-        l = to_light / max(dist, 0.0001);
-        let range = light.direction_range.w;
-        attenuation = distance_attenuation(dist, range);
-        let spot_dir = normalize(light.direction_range.xyz);
-        let cos_angle = dot(l, spot_dir);
-        attenuation *= spot_attenuation(cos_angle, light.spot_params.x, light.spot_params.y);
+        Self {
+            config,
+            thin_gbuffer,
+            light_prepass,
+            tiled_pipeline,
+            clustered_pipeline,
+            stencil_volumes: StencilLightVolumeManager::new(),
+            debug_visualizer: ClusterDebugVisualizer::default(),
+            frame_index: 0,
+            resolution: UVec2::new(width, height),
+        }
     }
 
-    let light_color = light.color_intensity.rgb * light.color_intensity.a;
+    /// Resize all internal buffers.
+    pub fn resize(&mut self, width: u32, height: u32) {
+        self.resolution = UVec2::new(width, height);
+        if let Some(ref mut gb) = self.thin_gbuffer {
+            gb.resize(width, height);
+        }
+        if let Some(ref mut lp) = self.light_prepass {
+            lp.resize(width, height);
+        }
+        if let Some(ref mut tp) = self.tiled_pipeline {
+            tp.resize(width, height);
+        }
+        if let Some(ref mut cp) = self.clustered_pipeline {
+            cp.resize(width, height);
+        }
+    }
 
-    // Cook-Torrance BRDF.
-    let h = normalize(v + l);
-    let n_dot_l = max(dot(normal, l), 0.0);
-    let n_dot_v = max(dot(normal, v), 0.001);
-    let n_dot_h = max(dot(normal, h), 0.0);
-    let v_dot_h = max(dot(v, h), 0.0);
+    /// Begin a new frame.
+    pub fn begin_frame(&mut self) {
+        self.frame_index += 1;
+        self.stencil_volumes.clear();
+        if let Some(ref mut tp) = self.tiled_pipeline {
+            tp.begin_frame();
+        }
+        if let Some(ref mut cp) = self.clustered_pipeline {
+            cp.begin_frame();
+        }
+        if let Some(ref mut lp) = self.light_prepass {
+            lp.begin_frame();
+        }
+    }
 
-    let d = distribution_ggx(n_dot_h, roughness);
-    let g = geometry_smith(n_dot_v, n_dot_l, roughness);
-    let f = fresnel_schlick(v_dot_h, f0);
+    /// Add a point light.
+    pub fn add_point_light(&mut self, position: Vec3, radius: f32, color: Vec3, intensity: f32) {
+        let idx = self.stencil_volumes.volumes.len() as u32;
+        self.stencil_volumes
+            .add_volume(StencilLightVolume::point_light(idx, position, radius, color, intensity));
 
-    let specular = d * g * f / max(4.0 * n_dot_v * n_dot_l, 0.001);
+        let tiled_light = TiledLight::point(position, radius, color, intensity);
+        if let Some(ref mut tp) = self.tiled_pipeline {
+            tp.add_light(tiled_light);
+        }
+        if let Some(ref mut cp) = self.clustered_pipeline {
+            cp.add_light(tiled_light);
+        }
+    }
 
-    let k_d = (vec3<f32>(1.0) - f) * (1.0 - metallic);
-    let diffuse = k_d * albedo / 3.14159265;
+    /// Add a spot light.
+    pub fn add_spot_light(
+        &mut self,
+        position: Vec3,
+        direction: Vec3,
+        range: f32,
+        outer_angle: f32,
+        inner_angle: f32,
+        color: Vec3,
+        intensity: f32,
+    ) {
+        let idx = self.stencil_volumes.volumes.len() as u32;
+        self.stencil_volumes.add_volume(StencilLightVolume::spot_light(
+            idx, position, direction, range, outer_angle, inner_angle, color, intensity,
+        ));
 
-    radiance = (diffuse + specular) * light_color * n_dot_l * attenuation;
+        let tiled_light = TiledLight::spot(position, direction, range, outer_angle, inner_angle, color, intensity);
+        if let Some(ref mut tp) = self.tiled_pipeline {
+            tp.add_light(tiled_light);
+        }
+        if let Some(ref mut cp) = self.clustered_pipeline {
+            cp.add_light(tiled_light);
+        }
+    }
 
-    return vec4<f32>(radiance, 1.0);
+    /// Add a directional light.
+    pub fn add_directional_light(&mut self, direction: Vec3, color: Vec3, intensity: f32) {
+        let idx = self.stencil_volumes.volumes.len() as u32;
+        self.stencil_volumes
+            .add_volume(StencilLightVolume::directional_light(idx, direction, color, intensity));
+
+        let tiled_light = TiledLight::directional(direction, color, intensity);
+        if let Some(ref mut tp) = self.tiled_pipeline {
+            tp.add_light(tiled_light);
+        }
+        if let Some(ref mut cp) = self.clustered_pipeline {
+            cp.add_light(tiled_light);
+        }
+    }
+
+    /// Perform light culling for the current frame.
+    pub fn cull_lights(&mut self, view: Mat4, projection: Mat4, camera_pos: Vec3) {
+        self.stencil_volumes.update_camera_tests(camera_pos);
+        self.stencil_volumes.sort_for_rendering(camera_pos);
+
+        if let Some(ref mut tp) = self.tiled_pipeline {
+            tp.cull_lights_cpu(view, projection);
+        }
+        if let Some(ref mut cp) = self.clustered_pipeline {
+            let inv_proj = projection.inverse();
+            cp.build_cluster_aabbs(inv_proj);
+            cp.assign_lights_cpu(view);
+        }
+        if let Some(ref mut lp) = self.light_prepass {
+            lp.update_matrices(view, projection);
+        }
+    }
+
+    /// Get statistics summary.
+    pub fn stats_summary(&self) -> DeferredV2Stats {
+        DeferredV2Stats {
+            frame_index: self.frame_index,
+            total_lights: self.stencil_volumes.total_count() as u32,
+            directional_lights: self.stencil_volumes.directional_count,
+            point_lights: self.stencil_volumes.point_count,
+            spot_lights: self.stencil_volumes.spot_count,
+            area_lights: self.stencil_volumes.area_count,
+            tiled_stats: self.tiled_pipeline.as_ref().map(|tp| tp.stats.clone()),
+            clustered_stats: self.clustered_pipeline.as_ref().map(|cp| cp.stats.clone()),
+        }
+    }
+
+    /// Toggle debug visualization.
+    pub fn toggle_debug(&mut self) {
+        self.debug_visualizer.cycle_mode();
+    }
 }
-"#;
 
-/// WGSL shader for the composition pass.
-pub const COMPOSITION_WGSL: &str = r#"
-// ---- Deferred Composition Pass Shader ----
-// Combines lighting accumulation with ambient + emissive + AO.
-
-struct CompositionUniforms {
-    ambient_ao: vec4<f32>,     // rgb = ambient colour, a = AO strength
-    exposure_gamma: vec4<f32>, // x = exposure, y = gamma
-};
-
-@group(0) @binding(0) var<uniform> comp: CompositionUniforms;
-@group(0) @binding(1) var lighting_texture: texture_2d<f32>;
-@group(0) @binding(2) var gbuffer_albedo: texture_2d<f32>;
-@group(0) @binding(3) var gbuffer_metallic_roughness: texture_2d<f32>;
-@group(0) @binding(4) var gbuffer_emissive: texture_2d<f32>;
-@group(0) @binding(5) var comp_sampler: sampler;
-
-struct VertexOutput {
-    @builtin(position) position: vec4<f32>,
-    @location(0) uv: vec2<f32>,
-};
-
-@vertex
-fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
-    var positions = array<vec2<f32>, 3>(
-        vec2<f32>(-1.0, -1.0),
-        vec2<f32>( 3.0, -1.0),
-        vec2<f32>(-1.0,  3.0),
-    );
-
-    var out: VertexOutput;
-    let pos = positions[vertex_index];
-    out.position = vec4<f32>(pos, 0.0, 1.0);
-    out.uv = pos * 0.5 + 0.5;
-    out.uv.y = 1.0 - out.uv.y;
-    return out;
+/// Summary statistics for the deferred V2 pipeline.
+#[derive(Debug, Clone)]
+pub struct DeferredV2Stats {
+    pub frame_index: u64,
+    pub total_lights: u32,
+    pub directional_lights: u32,
+    pub point_lights: u32,
+    pub spot_lights: u32,
+    pub area_lights: u32,
+    pub tiled_stats: Option<TiledDeferredStats>,
+    pub clustered_stats: Option<ClusteredShadingStats>,
 }
-
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let tex_coord = vec2<i32>(vec2<f32>(textureDimensions(lighting_texture)) * in.uv);
-
-    let lighting = textureLoad(lighting_texture, tex_coord, 0).rgb;
-    let albedo = textureLoad(gbuffer_albedo, tex_coord, 0).rgb;
-    let mr = textureLoad(gbuffer_metallic_roughness, tex_coord, 0);
-    let emissive = textureLoad(gbuffer_emissive, tex_coord, 0).rgb;
-
-    let ao = mr.b;
-    let ao_strength = comp.ambient_ao.a;
-    let effective_ao = mix(1.0, ao, ao_strength);
-
-    // Ambient contribution.
-    let ambient = comp.ambient_ao.rgb * albedo * effective_ao;
-
-    // Combine: direct lighting + ambient + emissive.
-    var final_color = lighting + ambient + emissive;
-
-    // Exposure tone mapping (simple Reinhard).
-    let exposure = comp.exposure_gamma.x;
-    final_color = final_color * exposure;
-    final_color = final_color / (final_color + vec3<f32>(1.0));
-
-    // Gamma correction.
-    let gamma = comp.exposure_gamma.y;
-    let inv_gamma = 1.0 / gamma;
-    final_color = pow(max(final_color, vec3<f32>(0.0)), vec3<f32>(inv_gamma));
-
-    return vec4<f32>(final_color, 1.0);
-}
-"#;
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -1261,152 +2215,85 @@ mod tests {
     use super::*;
 
     #[test]
-    fn gbuffer_layout_default() {
-        let layout = GBufferLayout::default();
-        assert_eq!(layout.color_formats().len(), 5);
+    fn test_thin_gbuffer_layout_default() {
+        let layout = ThinGBufferLayout::default();
+        assert_eq!(layout.color_attachment_count(), 2);
+        assert!(layout.estimated_memory_bytes() > 0);
     }
 
     #[test]
-    fn gbuffer_creation() {
-        let gb = GBuffer::with_default_layout(1920, 1080);
-        assert_eq!(gb.width, 1920);
-        assert_eq!(gb.height, 1080);
-        assert_eq!(gb.color_attachment_count(), 5);
+    fn test_packed_albedo_metallic_roundtrip() {
+        let packed = PackedAlbedoMetallic::pack(Vec3::new(0.5, 0.3, 0.8), 0.7);
+        let (albedo, metallic) = packed.unpack();
+        assert!((albedo.x - 0.5).abs() < 0.01);
+        assert!((albedo.y - 0.3).abs() < 0.01);
+        assert!((albedo.z - 0.8).abs() < 0.01);
+        assert!((metallic - 0.7).abs() < 0.01);
     }
 
     #[test]
-    fn gbuffer_resize() {
-        let mut gb = GBuffer::with_default_layout(1920, 1080);
-        gb.albedo_rt = 1;
-        gb.resize(2560, 1440);
-        assert_eq!(gb.width, 2560);
-        assert_eq!(gb.albedo_rt, 0); // invalidated
+    fn test_packed_normal_roundtrip() {
+        let normal = Vec3::new(0.0, 1.0, 0.0);
+        let packed = PackedNormalRoughness::pack(normal, 0.5, 0);
+        let decoded = packed.unpack_normal();
+        assert!((decoded - normal).length() < 0.02);
+        assert!((packed.unpack_roughness() - 0.5).abs() < EPSILON);
     }
 
     #[test]
-    fn gbuffer_memory_estimate() {
-        let gb = GBuffer::with_default_layout(1920, 1080);
-        let mem = gb.estimated_memory_bytes();
-        // Should be > 0 and reasonable (roughly 1920*1080 * ~20 bytes)
-        assert!(mem > 1_000_000);
-        assert!(mem < 1_000_000_000);
+    fn test_stencil_volume_camera_inside() {
+        let mut vol = StencilLightVolume::point_light(0, Vec3::ZERO, 10.0, Vec3::ONE, 1.0);
+        vol.test_camera_inside(Vec3::new(1.0, 0.0, 0.0));
+        assert!(vol.camera_inside);
+        vol.test_camera_inside(Vec3::new(20.0, 0.0, 0.0));
+        assert!(!vol.camera_inside);
     }
 
     #[test]
-    fn normal_octahedron_roundtrip() {
-        let normals = [
-            Vec3::X, Vec3::Y, Vec3::Z,
-            -Vec3::X, -Vec3::Y, -Vec3::Z,
-            Vec3::new(1.0, 1.0, 1.0).normalize(),
-            Vec3::new(-0.5, 0.3, 0.8).normalize(),
-        ];
-        for n in &normals {
-            let encoded = encode_normal_octahedron(*n);
-            let decoded = decode_normal_octahedron(encoded);
-            let error = (*n - decoded).length();
-            assert!(error < 0.01, "Octahedron encoding error too large: {error} for {n}");
-        }
+    fn test_tile_sphere_intersection() {
+        let tile = Tile::new(0, 0, 0, 0, 16, 16);
+        assert!(tile.intersects_sphere_screen(Vec2::new(8.0, 8.0), 5.0));
+        assert!(!tile.intersects_sphere_screen(Vec2::new(100.0, 100.0), 5.0));
     }
 
     #[test]
-    fn normal_spheremap_roundtrip() {
-        let normal = Vec3::new(0.5, 0.5, 0.707).normalize();
-        let encoded = encode_normal_spheremap(normal);
-        let decoded = decode_normal_spheremap(encoded);
-        let error = (normal - decoded).length();
-        assert!(error < 0.05, "Spheremap encoding error too large: {error}");
+    fn test_clustered_depth_slicing() {
+        let config = ClusteredShadingConfig::default();
+        let near_depth = config.slice_depth(0);
+        let far_depth = config.slice_depth(config.depth_slices);
+        assert!((near_depth - config.near_plane).abs() < 0.01);
+        assert!((far_depth - config.far_plane).abs() < 1.0);
     }
 
     #[test]
-    fn sphere_volume_generation() {
-        let (verts, indices) = generate_sphere_volume(8, 6);
-        assert!(!verts.is_empty());
-        assert!(!indices.is_empty());
-        assert_eq!(indices.len() % 3, 0, "Index count should be a multiple of 3");
+    fn test_heatmap_color() {
+        let c0 = DebugColor::heatmap(0.0);
+        assert!(c0.b > 0.5); // Blue end
+        let c1 = DebugColor::heatmap(1.0);
+        assert!(c1.r > 0.5); // Red end
     }
 
     #[test]
-    fn cone_volume_generation() {
-        let (verts, indices) = generate_cone_volume(8, 0.5, 2.0);
-        assert!(!verts.is_empty());
-        assert!(!indices.is_empty());
-        assert_eq!(indices.len() % 3, 0);
+    fn test_deferred_renderer_v2_lifecycle() {
+        let config = DeferredV2Config::from_preset(DeferredQualityPreset::High);
+        let mut renderer = DeferredRendererV2::new(config, 800, 600);
+        renderer.begin_frame();
+        renderer.add_point_light(Vec3::new(5.0, 3.0, 0.0), 10.0, Vec3::ONE, 100.0);
+        renderer.add_directional_light(Vec3::NEG_Y, Vec3::ONE, 1.0);
+        let stats = renderer.stats_summary();
+        assert_eq!(stats.total_lights, 2);
+        assert_eq!(stats.point_lights, 1);
+        assert_eq!(stats.directional_lights, 1);
     }
 
     #[test]
-    fn fullscreen_triangle_generation() {
-        let (verts, indices) = generate_fullscreen_triangle();
-        assert_eq!(verts.len(), 3);
-        assert_eq!(indices.len(), 3);
-    }
+    fn test_deferred_v2_config_presets() {
+        let low = DeferredV2Config::from_preset(DeferredQualityPreset::Low);
+        assert!(!low.use_clustered_shading);
+        assert!(low.use_stencil_volumes);
 
-    #[test]
-    fn depth_linearisation() {
-        let linear = linearize_depth(0.5, 0.1, 100.0);
-        assert!(linear > 0.0 && linear < 100.0);
-    }
-
-    #[test]
-    fn camera_uniforms_construction() {
-        let view = Mat4::look_at_rh(Vec3::new(0.0, 5.0, 10.0), Vec3::ZERO, Vec3::Y);
-        let proj = Mat4::perspective_rh(std::f32::consts::FRAC_PI_4, 16.0 / 9.0, 0.1, 100.0);
-        let uniforms = DeferredCameraUniforms::from_matrices(
-            view, proj, Mat4::IDENTITY, Vec3::new(0.0, 5.0, 10.0), 0.1, 100.0, 1920, 1080,
-        );
-        assert_eq!(uniforms.viewport_far[0], 1920.0);
-        assert_eq!(uniforms.camera_pos_near[3], 0.1);
-    }
-
-    #[test]
-    fn geometry_uniforms_normal_matrix() {
-        let model = Mat4::from_scale(Vec3::new(2.0, 1.0, 1.0));
-        let uniforms = GeometryPassUniforms::from_model(
-            model, model, Vec4::ONE, 0.0, 0.5, 1.0, Vec3::ZERO, 0.0,
-        );
-        // Normal matrix should exist (non-zero).
-        assert!(uniforms.normal_matrix[0][0] != 0.0 || uniforms.normal_matrix[1][1] != 0.0);
-    }
-
-    #[test]
-    fn light_uniforms_directional() {
-        let light = crate::lighting::light_types::DirectionalLight::sun().to_light();
-        let uniforms = LightPassUniforms::from_directional(&light);
-        assert_eq!(uniforms.position_type[3], 0.0); // directional type = 0
-    }
-
-    #[test]
-    fn deferred_renderer_creation() {
-        let renderer = DeferredRenderer::with_defaults(1920, 1080);
-        assert_eq!(renderer.width(), 1920);
-        assert_eq!(renderer.height(), 1080);
-        assert!(!renderer.sphere_volume().0.is_empty());
-        assert!(!renderer.cone_volume().0.is_empty());
-    }
-
-    #[test]
-    fn deferred_renderer_resize() {
-        let mut renderer = DeferredRenderer::with_defaults(1920, 1080);
-        renderer.resize(2560, 1440);
-        assert_eq!(renderer.width(), 2560);
-        assert_eq!(renderer.gbuffer.width, 2560);
-    }
-
-    #[test]
-    fn world_position_reconstruction() {
-        let view = Mat4::look_at_rh(Vec3::new(0.0, 0.0, 5.0), Vec3::ZERO, Vec3::Y);
-        let proj = Mat4::perspective_rh(std::f32::consts::FRAC_PI_4, 1.0, 0.1, 100.0);
-        let inv_vp = (proj * view).inverse();
-        // Center of screen at some depth should reconstruct to a point on the view axis.
-        let world = reconstruct_world_position(Vec2::new(0.5, 0.5), 0.5, &inv_vp);
-        // The z should be somewhere between near and far along the view direction.
-        assert!(world.z.is_finite());
-    }
-
-    #[test]
-    fn composition_uniforms() {
-        let renderer = DeferredRenderer::with_defaults(1920, 1080);
-        let comp = renderer.prepare_composition_uniforms(1.0, 2.2, 0.5);
-        assert_eq!(comp.exposure_gamma[0], 1.0);
-        assert_eq!(comp.exposure_gamma[1], 2.2);
+        let ultra = DeferredV2Config::from_preset(DeferredQualityPreset::Ultra);
+        assert!(ultra.use_clustered_shading);
+        assert_eq!(ultra.tile_size, 8);
     }
 }

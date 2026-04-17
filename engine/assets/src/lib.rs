@@ -25,7 +25,7 @@ pub mod loader;
 pub mod material;
 pub mod pipeline;
 pub mod scene_format;
-pub mod shader_compiler_v2;
+pub mod shader_compiler;
 
 pub use database::{AssetDatabase, AssetMeta};
 pub use loader::{AssetError, AssetHandle, AssetId, AssetLoader, AssetPath, AssetServer, LoadState};
@@ -62,7 +62,7 @@ pub use asset_processor::{
     MeshImportSettings, OptimisedMesh, ProcessableMesh, ProcessorError, RawAudio, RawPixels,
     TextureImportSettings, Thumbnail,
 };
-pub use shader_compiler_v2::{
+pub use shader_compiler::{
     BindingType, ShaderBinding, ShaderCache, ShaderCompiler, ShaderError, ShaderReflection,
     ShaderStage, SpirVModule, ValidationResult,
 };

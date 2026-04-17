@@ -25,7 +25,7 @@ pub mod serialization;
 pub mod type_registry;
 pub mod simd;
 pub mod spatial;
-pub mod pool_allocator_v2;
+pub mod pool_allocator;
 pub mod string_utils;
 pub mod task_scheduler;
 pub mod threading;
@@ -35,7 +35,7 @@ pub mod config_system;
 pub mod math_extended;
 pub mod object_model;
 pub mod signal_slot;
-pub mod state_machine_v2;
+pub mod state_machine;
 
 // Thread pool: configurable worker count, task queue with priority, work stealing,
 // thread affinity, thread naming, idle callbacks, graceful shutdown, pool statistics.
@@ -48,7 +48,7 @@ pub mod memory_arena;
 // Enhanced profiling: GPU timestamp queries, nested scope tree, flame graph data
 // export, per-system averages over N frames, automatic hotspot alerts, memory
 // allocation tracking per scope.
-pub mod profiling_v2;
+pub mod profiling;
 
 // Additional data structures: skip list, B-tree, trie (prefix tree), bloom filter,
 // count-min sketch, disjoint set (union-find with path compression), LRU cache,
@@ -72,7 +72,7 @@ pub mod debug_draw;
 pub mod version;
 
 // Re-exports for new profiling types.
-pub use profiling_v2::{
+pub use profiling::{
     AlertSeverity as ProfileAlertSeverity, FlameGraphEntry, FrameProfile,
     HotspotAlert, ProfileScope, ProfilerV2, ScopeAverage, ScopeId,
 };
@@ -113,7 +113,7 @@ pub use event_bus::{
     EventBusStats, EventId, KeyModifiers, KeyPressed, KeyReleased, PhysicsStep, SceneLoaded,
     SceneUnloading, SubscriberId, WindowResized,
 };
-pub use pool_allocator_v2::{
+pub use pool_allocator::{
     AllocError, AllocHandle, AllocResult, AllocationCategory, AllocationRecord,
     AllocatorStats, CategoryBudget, DefragMove, DefragPlan, LeakDetector,
     PoolAllocatorV2, ScopedAllocator, SourceLocation,
@@ -153,9 +153,23 @@ pub use object_model::{
 pub use signal_slot::{
     ConnectionGuard, ConnectionId, ConnectionType, SharedSignal, Signal, SignalMap,
 };
-pub use state_machine_v2::{
+pub use state_machine::{
     ClosureState, ContextValue, HistoryEntry, ParallelStateMachine, State,
     StateContext, StateData, StateId, StateMachine, TimedState, Transition,
+};
+
+// 64-bit large world coordinates: floating origin, world cell grid, streaming
+// volumes, world bounds, multi-system LOD, sector-based simulation rates.
+pub mod large_world;
+
+pub use large_world::{
+    AudioLODQuality, CellCoord3D, CellLoadState, LODEntity, LODLevel, LODSystem,
+    LODSystemStats, LODThresholds, LargeWorldSystem, LargeWorldUpdateResult,
+    RebaseEvent, Sector, SectorManager, SectorManagerConfig, SectorManagerStats,
+    SectorTier, StreamingPriority, StreamingVolume, StreamingVolumeEvent,
+    StreamingVolumeManager, StreamingVolumeShape, WorldBounds, WorldCell,
+    WorldCellConfig, WorldCellGrid, WorldCellGridStats, WorldOrigin,
+    WorldPosition,
 };
 
 // Structured logging: log levels (Trace/Debug/Info/Warn/Error), log targets
