@@ -1,6 +1,6 @@
 # Genovo Engine
 
-A AAA-tier game engine built in Rust — **447,000+ lines** across 28+ modules with real implementations of rendering, physics, AI, networking, scripting, and more.
+A AAA-tier game engine built in Rust — **456,000+ lines** across 28+ modules with real implementations of rendering, physics, AI, networking, scripting, and more.
 
 ## Quick Start
 
