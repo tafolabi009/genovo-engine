@@ -5,7 +5,10 @@
 //! for multi-threaded workloads, runtime reflection, generational handles, error
 //! types, and time management utilities.
 
+pub mod collections;
 pub mod color;
+pub mod compression;
+pub mod crypto;
 pub mod curve;
 pub mod error;
 pub mod geometry;
@@ -42,6 +45,14 @@ pub use plugin::{
     ClosurePlugin, Plugin, PluginContext, PluginError, PluginManager, PluginState, PluginVersion,
 };
 pub use time::Clock;
+pub use collections::{
+    BitSet, FreeList, FreeListHandle, InternedString, ObjectPool, PoolHandle,
+    PriorityQueue, RingBuffer, SmallVec, SparseArray, StringInterner,
+};
+pub use compression::{
+    DeltaEncoder, HuffmanCoder, HuffmanTable, LZ4Compressor, RunLengthEncoder,
+};
+pub use crypto::{Aes128, Crc32, Crc32Hasher, Hmac, Sha256, Sha256Hasher};
 
 /// Unique identifier for engine objects.
 pub type ObjectId = uuid::Uuid;
