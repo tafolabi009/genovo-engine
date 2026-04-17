@@ -35,7 +35,10 @@ pub mod slate_debug;
 pub mod slate_input;
 pub mod slate_multiwindow;
 pub mod slate_notifications;
+pub mod slate_animation;
+pub mod slate_layout;
 pub mod slate_performance;
+pub mod slate_platform;
 pub mod slate_property_editor;
 pub mod slate_text;
 pub mod slate_widgets;
@@ -166,6 +169,25 @@ pub use slate_property_editor::{
     PropId, PropertyCategory, PropertyChange, PropertyEditor, PropertyEditorConfig,
     PropertyFilter, PropertyMetadata, PropertyRow, PropertyType, PropertyValue,
     ShowCondition, UndoEntry, UndoRedoStack,
+};
+pub use slate_layout::{
+    BoxSlot, Canvas, CanvasSlot, GridPanel, GridSlot, HorizontalBox,
+    Overlay, OverlaySlot, ScaleBox, SizeBox, SizeRule,
+    SlateMargin, UniformGridPanel, VerticalBox, WidgetSwitcher, WrapBox,
+    HAlign as SlateHAlign, VAlign as SlateVAlign, StretchMode as SlateStretchMode,
+};
+pub use slate_animation::{
+    ActiveTransition, AnimatedColor, AnimatedFloat, AnimatedVec2,
+    CriticalSpring, CurveHandle as SlateCurveHandle,
+    CurveSequence as SlateCurveSequence, SlateEasing, SlideDirection,
+    TransitionManager, WidgetTransition,
+};
+pub use slate_platform::{
+    ClipboardManager as SlateClipboardManager, CursorType, DPIManager,
+    FileDialog, FileFilter, ImageData, MonitorInfo as SlateMonitorInfo,
+    PlatformContext, SystemInfo, WindowEvent, WindowId as SlateWindowId,
+    WindowManager as SlateWindowManager, WindowProperties, WindowState as SlateWindowState,
+    WindowType,
 };
 
 // ---------------------------------------------------------------------------
