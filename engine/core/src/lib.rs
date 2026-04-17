@@ -55,6 +55,18 @@ pub mod profiling_v2;
 // concurrent queue.
 pub mod data_structures;
 
+// Job graph system: jobs with typed inputs/outputs, automatic dependency from
+// data flow, fan-out/fan-in, job stealing, job priorities, visualization.
+pub mod job_graph;
+
+// Binary serialization: compact binary format, schema versioning, forward/backward
+// compatibility, field tags, nested structs, arrays, maps, CRC32 checksum.
+pub mod binary_serializer;
+
+// Debug drawing API: draw_line, draw_sphere, draw_box, draw_text_3d, draw_arrow,
+// draw_frustum, persistent vs single-frame, depth-tested vs overlay.
+pub mod debug_draw;
+
 // Engine versioning: semantic version struct, version comparison, build info
 // (commit hash, build date, platform), feature flags, version compatibility checking.
 pub mod version;

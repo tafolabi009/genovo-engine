@@ -126,6 +126,14 @@ pub mod bandwidth_manager;
 // without real network issues.
 pub mod network_simulation;
 
+// Game server framework: server tick loop, client management, world state,
+// authority model, anti-cheat hooks, admin commands, server logging.
+pub mod game_server;
+
+// Client connection manager: connection lifecycle, authentication, session tokens,
+// kick/ban, timeout handling, reconnection, rate limiting.
+pub mod client_manager;
+
 // Efficient packet serialization: bit-level packing, variable-length integers,
 // quantized floats, string table (send index instead of full string), schema versioning.
 pub mod packet_serializer;

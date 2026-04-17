@@ -139,6 +139,22 @@ pub mod physics_interpolation;
 // shape adding/removing at runtime.
 pub mod compound_shapes;
 
+// Heightfield collision: ray vs heightfield, sphere vs heightfield,
+// AABB vs heightfield, material per cell, holes, grid traversal.
+pub mod heightfield_collision;
+
+// Extended physics queries: shape overlap, closest point, contact test,
+// sweep with filter, query batching, result caching.
+pub mod physics_queries_v2;
+
+// Joint lifecycle management: create/destroy/enable/disable joints,
+// joint iteration, joint queries by body, breaking detection, events.
+pub mod joint_system;
+
+// Physics island system: union-find island building, island sleep/wake,
+// island-level simulation skip, island splitting/merging.
+pub mod island_manager;
+
 // Water interaction: water volumes, submersion detection, buoyancy forces per shape,
 // water drag, water current forces, splash effects, wake generation, water surface
 // deformation.

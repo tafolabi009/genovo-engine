@@ -39,6 +39,14 @@ pub mod query_cache;
 pub mod sparse_set_v2;
 pub mod system_graph;
 
+// Query filter system: With<T>, Without<T>, Changed<T>, Added<T>, Or<A,B>,
+// And<A,B>, Not<T>, Optional<T> -- composable filter combinators for queries.
+pub mod query_filters;
+
+// Optimized component storage: SoA (struct-of-arrays) layout, chunk iteration,
+// prefetch hints, sorted iteration by entity ID, memory pool backing.
+pub mod component_storage_v2;
+
 // Component lifecycle hooks: on_insert, on_remove, on_modify callbacks per component
 // type, hook registration, batch hook processing, hook priority ordering.
 pub mod component_hooks;

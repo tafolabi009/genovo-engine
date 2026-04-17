@@ -112,6 +112,26 @@ pub mod particle_effects;
 // hazard zones with damage-over-time.
 pub mod environmental_hazards;
 
+// Visual dialogue graph: nodes with text/choices/conditions, edges for flow,
+// graph evaluation, variable substitution, localization keys.
+pub mod dialogue_graph;
+
+// RPG class/job system: class definitions, class abilities, class progression,
+// multi-class, class switching, passive bonuses, stat scaling.
+pub mod class_system;
+
+// World events: random events, scheduled events, event conditions, event effects,
+// event chains, event UI data, cooldowns, priority resolution.
+pub mod world_event;
+
+// Collectible system: collectible types, collection tracking, completion percentage,
+// rewards on complete set, map markers, milestones, categories.
+pub mod collectibles;
+
+// Enhanced camera: multiple camera modes, smooth transitions, camera effects stack,
+// cinematic camera with keyframed paths, split-screen support.
+pub mod camera_system_v2;
+
 // Level/map progression: level sequence, level unlocking conditions, par time/score,
 // star ratings, level statistics, level select data, world map nodes.
 pub mod level_progression;

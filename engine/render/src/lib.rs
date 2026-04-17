@@ -230,6 +230,26 @@ pub mod material_layering;
 // shadow importance (skip shadows for distant/small lights).
 pub mod shadow_system_v2;
 
+// Lightmap GI baking: progressive path tracing, UV2 unwrapping, denoising,
+// HDR lightmap encoding, directional lightmaps, irradiance probe baking.
+pub mod gi_baking;
+
+// Hardware mesh instancing: per-instance data (transform, color, custom),
+// instance buffer management, LOD per instance, frustum culling per batch.
+pub mod mesh_instancing;
+
+// GPU particle sorting: bitonic sort on GPU, depth-based sort keys,
+// indirect dispatch, sort stability, multi-pass sorting.
+pub mod particle_gpu_sort;
+
+// Deferred decal rendering: project into G-buffer, normal blending,
+// angle fade, lifetime management, sorting, material channels.
+pub mod deferred_decals;
+
+// GPU render profiler: timestamp queries per pass, pipeline statistics,
+// frame graph timeline, bottleneck detection, multi-frame averaging.
+pub mod render_profiler;
+
 // Shadow cascade management: split schemes (uniform/log/PSSM), per-cascade viewport,
 // cascade blending at boundaries, cascade stabilization, visualization colors,
 // shadow quality per cascade.

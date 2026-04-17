@@ -53,6 +53,18 @@ pub mod world_model;
 // during dialogue, bartering/persuasion/intimidation skill checks.
 pub mod conversation;
 
+// AI controller framework: sense-think-act loop, blackboard per agent,
+// behavior selection, action execution, perception integration, debug viz.
+pub mod ai_controller;
+
+// Combat AI: target selection (threat, distance, health), attack patterns,
+// dodge/block decision, ability usage AI, retreat conditions, group tactics.
+pub mod combat_ai;
+
+// AI navigation: path request queue, async pathfinding, path smoothing,
+// obstacle avoidance integration, stuck detection, teleport when stuck.
+pub mod ai_navigation;
+
 // Multi-agent behavior coordination: group goals, task assignment, role rotation,
 // synchronized actions (coordinated breach), radio communication simulation.
 pub mod behavior_coordinator;

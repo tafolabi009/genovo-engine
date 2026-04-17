@@ -89,6 +89,10 @@ pub use voice_synthesis::{
 // farthest), sound categories, fade manager, crossfade, ducking, audio focus.
 pub mod audio_playback;
 
+// Audio resource management: audio clip loading/unloading, streaming buffer
+// management, audio memory budget, preload lists, audio bank system.
+pub mod audio_resource;
+
 // Streaming audio playback: read audio data in chunks from disk, double-buffered
 // streaming, seek support, loop points, streaming from asset system, memory-limited
 // playback for large files.
