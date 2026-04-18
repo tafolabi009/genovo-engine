@@ -155,17 +155,11 @@ fn fs_main(input: FragmentInput) -> @location(0) vec4<f32> {
         return tex_color * input.color;
     }
 
-    // ---------- SDF TEXT (flag 2) ----------
+    // ---------- BITMAP TEXT (flag 2) ----------
     if flags == 2u {
         let tex_sample = textureSample(t_diffuse, s_diffuse, input.uv);
-        let distance = tex_sample.a;
-
-        // SDF threshold: 0.5 is the edge. We smooth over a small range
-        // for anti-aliased text edges.
-        let edge = 0.5;
-        let width = fwidth(distance) * 0.75;
-        let alpha = smoothstep(edge - width, edge + width, distance);
-
+        // Bitmap font: alpha channel directly encodes glyph coverage.
+        let alpha = tex_sample.a;
         return vec4<f32>(input.color.rgb, input.color.a * alpha);
     }
 
@@ -429,13 +423,9 @@ impl UIGpuRenderer {
     const DEFAULT_MAX_VERTICES: usize = 65536;
     /// Maximum number of indices per frame.
     const DEFAULT_MAX_INDICES: usize = 131072;
-    /// Built-in font atlas size.
-    const FONT_ATLAS_SIZE: u32 = 512;
-    /// Glyph cell size in the built-in atlas.
-    const GLYPH_CELL_W: u32 = 10;
+    /// Glyph cell size in the built-in bitmap font atlas (8x16 VGA font).
+    const GLYPH_CELL_W: u32 = 8;
     const GLYPH_CELL_H: u32 = 16;
-    /// Number of columns in the glyph atlas grid.
-    const GLYPH_COLS: u32 = 16;
 
     /// Creates a new UI GPU renderer.
     pub fn new(
@@ -606,8 +596,8 @@ impl UIGpuRenderer {
             white_texture_index: 0,
             font_atlas_index: 0,
             builtin_glyphs: HashMap::new(),
-            font_atlas_width: Self::FONT_ATLAS_SIZE,
-            font_atlas_height: Self::FONT_ATLAS_SIZE,
+            font_atlas_width: 128,
+            font_atlas_height: 96,
             clip_stack: Vec::with_capacity(8),
             screen_size: Vec2::new(1920.0, 1080.0),
             frame_draw_calls: 0,
@@ -631,6 +621,10 @@ impl UIGpuRenderer {
     // -----------------------------------------------------------------------
 
     fn create_texture_internal(&mut self, width: u32, height: u32, rgba_data: &[u8]) -> usize {
+        self.create_texture_internal_filtered(width, height, rgba_data, wgpu::FilterMode::Linear)
+    }
+
+    fn create_texture_internal_filtered(&mut self, width: u32, height: u32, rgba_data: &[u8], filter: wgpu::FilterMode) -> usize {
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("ui_texture"),
             size: wgpu::Extent3d {
@@ -673,8 +667,8 @@ impl UIGpuRenderer {
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
+            mag_filter: filter,
+            min_filter: filter,
             mipmap_filter: wgpu::FilterMode::Nearest,
             ..Default::default()
         });
@@ -726,80 +720,70 @@ impl UIGpuRenderer {
     // Built-in font atlas
     // -----------------------------------------------------------------------
 
-    /// Builds a simple built-in bitmap font atlas for ASCII printable chars
-    /// (32..=126). Each glyph is rendered as a simple box SDF.
+    /// Builds a bitmap font atlas for ASCII printable chars (32..=126)
+    /// using the classic 8x16 VGA/BIOS bitmap font (public domain).
+    /// Each glyph is 8 pixels wide and 16 pixels tall.
     fn build_builtin_font_atlas(&mut self) {
-        let atlas_w = Self::FONT_ATLAS_SIZE;
-        let atlas_h = Self::FONT_ATLAS_SIZE;
-        let cell_w = Self::GLYPH_CELL_W;
-        let cell_h = Self::GLYPH_CELL_H;
-        let cols = Self::GLYPH_COLS;
+        use crate::bitmap_font::get_char_bitmap;
+
+        const CHAR_W: u32 = 8;
+        const CHAR_H: u32 = 16;
+        const CHARS_PER_ROW: u32 = 16;
+        const NUM_CHARS: u32 = 95; // ASCII 32..=126
+        const ROWS: u32 = (NUM_CHARS + CHARS_PER_ROW - 1) / CHARS_PER_ROW; // 6
+
+        let atlas_w = CHAR_W * CHARS_PER_ROW; // 128
+        let atlas_h = CHAR_H * ROWS;          // 96
+
+        // Store actual atlas dimensions for UV computation.
+        self.font_atlas_width = atlas_w;
+        self.font_atlas_height = atlas_h;
 
         let mut pixels = vec![0u8; (atlas_w * atlas_h * 4) as usize];
 
-        for c in ' '..='~' {
-            let idx = (c as u32) - (' ' as u32);
-            let col = idx % cols;
-            let row = idx / cols;
-            let origin_x = col * cell_w;
-            let origin_y = row * cell_h;
+        for ch in 32u8..=126u8 {
+            let idx = (ch - 32) as u32;
+            let col = idx % CHARS_PER_ROW;
+            let row = idx / CHARS_PER_ROW;
+            let base_x = col * CHAR_W;
+            let base_y = row * CHAR_H;
 
-            // Compute SDF for each pixel in the cell.
-            let glyph_w = cell_w as f32;
-            let glyph_h = cell_h as f32;
-            let inset = 2.0; // SDF inset border
-
-            for py in 0..cell_h {
-                for px in 0..cell_w {
-                    let fx = px as f32;
-                    let fy = py as f32;
-
-                    // Distance from edge of glyph body.
-                    let dx = fx.min(glyph_w - 1.0 - fx);
-                    let dy = fy.min(glyph_h - 1.0 - fy);
-                    let d = dx.min(dy);
-
-                    // Normalise to SDF value: 0 at edge, 1 deep inside.
-                    let sdf_val = (d / inset).clamp(0.0, 1.0);
-
-                    // For space character, make it fully transparent.
-                    let alpha = if c == ' ' { 0 } else { (sdf_val * 255.0) as u8 };
-
-                    let dest_x = origin_x + px;
-                    let dest_y = origin_y + py;
-                    let dest_idx = ((dest_y * atlas_w + dest_x) * 4) as usize;
-                    if dest_idx + 3 < pixels.len() {
-                        pixels[dest_idx] = 255;
-                        pixels[dest_idx + 1] = 255;
-                        pixels[dest_idx + 2] = 255;
-                        pixels[dest_idx + 3] = alpha;
+            let bitmap = get_char_bitmap(ch);
+            for y in 0..CHAR_H {
+                let row_bits = bitmap[y as usize];
+                for x in 0..CHAR_W {
+                    if (row_bits >> (7 - x)) & 1 != 0 {
+                        let px = base_x + x;
+                        let py = base_y + y;
+                        let offset = ((py * atlas_w + px) * 4) as usize;
+                        pixels[offset] = 255;     // R
+                        pixels[offset + 1] = 255; // G
+                        pixels[offset + 2] = 255; // B
+                        pixels[offset + 3] = 255; // A
                     }
                 }
             }
 
             // Store glyph UV info.
-            let u_min = origin_x as f32 / atlas_w as f32;
-            let v_min = origin_y as f32 / atlas_h as f32;
-            let u_max = (origin_x + cell_w) as f32 / atlas_w as f32;
-            let v_max = (origin_y + cell_h) as f32 / atlas_h as f32;
+            let u_min = base_x as f32 / atlas_w as f32;
+            let v_min = base_y as f32 / atlas_h as f32;
+            let u_max = (base_x + CHAR_W) as f32 / atlas_w as f32;
+            let v_max = (base_y + CHAR_H) as f32 / atlas_h as f32;
 
-            // Proportional widths for common characters.
-            let char_advance = match c {
-                ' ' => 0.4,
-                'i' | 'l' | '!' | '|' | ':' | ';' | '.' | ',' | '\'' => 0.35,
-                'm' | 'w' | 'M' | 'W' => 0.7,
-                _ if c.is_uppercase() => 0.6,
-                _ => 0.5,
-            };
+            // Monospace font: all characters advance the same width.
+            // The advance is expressed as a fraction of font_size so that
+            // cursor_x += advance * font_size gives the correct spacing.
+            // With an 8-wide glyph in a 16-tall cell, advance = 8/16 = 0.5.
+            let char_advance = 0.5;
 
             self.builtin_glyphs.insert(
-                c,
+                ch as char,
                 BuiltinGlyphInfo {
                     uv_min: [u_min, v_min],
                     uv_max: [u_max, v_max],
                     advance: char_advance,
-                    width: cell_w as f32,
-                    height: cell_h as f32,
+                    width: CHAR_W as f32,
+                    height: CHAR_H as f32,
                     offset_y: 0.0,
                 },
             );

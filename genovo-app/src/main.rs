@@ -1,31 +1,14 @@
 //! Genovo Studio -- Professional Game Development Environment
 //!
-//! Hybrid architecture: custom UI state management (genovo_ui) with egui as
-//! the rendering backend for guaranteed readable text. The custom Slate
-//! framework handles all layout, panel logic, widget state, and styling --
-//! egui is used ONLY for drawing final pixels (text, rectangles, lines).
+//! Custom Slate UI rendered entirely through UIGpuRenderer (genovo-ui) with
+//! bitmap font text rendering. No egui dependency.
 //!
 //! Architecture:
 //!   1. winit window + wgpu device/queue/surface
-//!   2. egui for 2D UI rendering (text + shapes) -- no egui UI logic used
-//!   3. Custom UI framework (EditorState) for state management, layout, panels
+//!   2. UIGpuRenderer for ALL 2D UI (text, rectangles, lines)
+//!   3. EditorState for state management, layout, panels
 //!   4. SceneRenderManager for full 3D viewport (PBR, grid, built-in primitives)
-//!   5. Each frame: handle events -> egui begin_frame -> draw UI via egui -> render
-//!
-//! Features:
-//!   - Real GPU-rendered 3D viewport (SceneRenderManager)
-//!   - Scene outliner with colored entity type dots, search, selection
-//!   - Inspector with colored XYZ drag values, physics sync, light controls
-//!   - Content browser with directory scanning and icon grid
-//!   - Console with command history and colored log output
-//!   - Profiler with frame time display
-//!   - Animation timeline placeholder
-//!   - Near-black dark theme (rgb(18,18,22) base, rgb(24,24,28) panels)
-//!   - Accent blue rgb(56,132,244) for selection/active
-//!   - Full keyboard shortcuts (Ctrl+S, Ctrl+Z, Delete, Q/W/E/R, Space, F5, F)
-//!   - Working physics integration (play/pause/stop/step)
-//!   - Status bar with colored play-state dot, FPS, entity/body counts
-//!   - Toolbar with play/pause/stop, transform tools, snap, grid, speed
+//!   5. Each frame: handle events -> draw UI via UIGpuRenderer -> render
 
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -48,9 +31,12 @@ use genovo_render::scene_renderer::{
     SceneRenderManager, SceneCamera, SceneLights,
 };
 
-// Custom Slate UI framework -- for state management and types only
+// Custom Slate UI framework
 use genovo_ui::ui_framework::UIStyle;
 use genovo_ui::dock_system::DockStyle;
+use genovo_ui::gpu_renderer::UIGpuRenderer;
+use genovo_ui::render_commands::Color;
+use genovo_core::Rect;
 
 // Import undo system types
 use genovo_editor::undo_system::{
@@ -65,7 +51,7 @@ use genovo_scripting::vm::{ScriptValue, ScriptError, NativeFn, ScriptContext};
 use genovo_scripting::vm::GenovoVM;
 use genovo_scripting::ScriptVM;
 
-// Audio engine (uses SoftwareMixer from genovo_audio, running in a background thread)
+// Audio engine
 use std::sync::atomic::{AtomicBool, Ordering};
 
 // Link all 26 engine modules into the binary
@@ -93,44 +79,45 @@ use genovo_replay as _replay;
 use genovo_gameplay as _gameplay;
 
 // =============================================================================
-// egui Color Palette -- matching UIStyle::dark() theme exactly
+// Color constants (linear float RGBA)
 // =============================================================================
 
-const BG_BASE: egui::Color32 = egui::Color32::from_rgb(18, 18, 22);
-const BG_PANEL: egui::Color32 = egui::Color32::from_rgb(24, 24, 28);
-const BG_WIDGET: egui::Color32 = egui::Color32::from_rgb(32, 32, 38);
-const BG_HOVER: egui::Color32 = egui::Color32::from_rgb(42, 42, 50);
-const BG_ACTIVE: egui::Color32 = egui::Color32::from_rgb(52, 52, 62);
-const BORDER: egui::Color32 = egui::Color32::from_rgb(38, 38, 44);
-const BORDER_SUBTLE: egui::Color32 = egui::Color32::from_rgb(30, 30, 36);
+fn c(r: u8, g: u8, b: u8) -> Color {
+    Color::new(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 1.0)
+}
+fn ca(r: u8, g: u8, b: u8, a: u8) -> Color {
+    Color::new(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, a as f32 / 255.0)
+}
 
-const TEXT_BRIGHT: egui::Color32 = egui::Color32::from_rgb(230, 230, 235);
-const TEXT_NORMAL: egui::Color32 = egui::Color32::from_rgb(180, 180, 188);
-const TEXT_DIM: egui::Color32 = egui::Color32::from_rgb(110, 110, 120);
-const TEXT_MUTED: egui::Color32 = egui::Color32::from_rgb(65, 65, 72);
+fn bg_base() -> Color { c(18, 18, 22) }
+fn bg_panel() -> Color { c(24, 24, 28) }
+fn bg_widget() -> Color { c(32, 32, 38) }
+fn bg_hover() -> Color { c(42, 42, 50) }
+fn border_color() -> Color { c(38, 38, 44) }
 
-const ACCENT: egui::Color32 = egui::Color32::from_rgb(56, 132, 244);
-const ACCENT_DIM: egui::Color32 = egui::Color32::from_rgb(40, 100, 200);
-const ACCENT_BRIGHT: egui::Color32 = egui::Color32::from_rgb(80, 156, 255);
-const ACCENT_BG: egui::Color32 = egui::Color32::from_rgb(30, 60, 110);
+fn text_bright() -> Color { c(230, 230, 235) }
+fn text_normal() -> Color { c(180, 180, 188) }
+fn text_dim() -> Color { c(110, 110, 120) }
+fn text_muted() -> Color { c(65, 65, 72) }
 
-const GREEN: egui::Color32 = egui::Color32::from_rgb(72, 199, 142);
-const GREEN_DIM: egui::Color32 = egui::Color32::from_rgb(50, 140, 100);
-const YELLOW: egui::Color32 = egui::Color32::from_rgb(245, 196, 80);
-const YELLOW_DIM: egui::Color32 = egui::Color32::from_rgb(180, 145, 60);
-const RED: egui::Color32 = egui::Color32::from_rgb(235, 87, 87);
-const RED_DIM: egui::Color32 = egui::Color32::from_rgb(160, 60, 60);
-const CYAN: egui::Color32 = egui::Color32::from_rgb(70, 200, 220);
-const MAGENTA: egui::Color32 = egui::Color32::from_rgb(190, 80, 210);
-const ORANGE: egui::Color32 = egui::Color32::from_rgb(230, 150, 60);
+fn accent() -> Color { c(56, 132, 244) }
+fn accent_dim() -> Color { c(40, 100, 200) }
+fn accent_bright() -> Color { c(80, 156, 255) }
+fn accent_bg() -> Color { c(30, 60, 110) }
 
-// XYZ axis colors (Unreal Engine convention)
-const X_COLOR: egui::Color32 = egui::Color32::from_rgb(235, 75, 75);
-const Y_COLOR: egui::Color32 = egui::Color32::from_rgb(72, 199, 142);
-const Z_COLOR: egui::Color32 = egui::Color32::from_rgb(56, 132, 244);
+fn green() -> Color { c(72, 199, 142) }
+fn yellow() -> Color { c(245, 196, 80) }
+fn red() -> Color { c(235, 87, 87) }
+fn cyan() -> Color { c(70, 200, 220) }
+fn magenta() -> Color { c(190, 80, 210) }
+fn orange() -> Color { c(230, 150, 60) }
+
+fn x_color() -> Color { c(235, 75, 75) }
+fn y_color() -> Color { c(72, 199, 142) }
+fn z_color() -> Color { c(56, 132, 244) }
 
 // =============================================================================
-// Entity Type (data model aligned with editor_widgets)
+// Entity Type
 // =============================================================================
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -168,24 +155,20 @@ impl EntityType {
         }
     }
 
-    fn icon_color(&self) -> egui::Color32 {
+    fn icon_color(&self) -> Color {
         match self {
-            EntityType::Empty => TEXT_DIM,
-            EntityType::Mesh => CYAN,
-            EntityType::Light => YELLOW,
-            EntityType::Camera => ACCENT_BRIGHT,
-            EntityType::ParticleSystem => MAGENTA,
-            EntityType::Audio => ORANGE,
+            EntityType::Empty => text_dim(),
+            EntityType::Mesh => cyan(),
+            EntityType::Light => yellow(),
+            EntityType::Camera => accent_bright(),
+            EntityType::ParticleSystem => magenta(),
+            EntityType::Audio => orange(),
         }
-    }
-
-    fn dot_color(&self) -> egui::Color32 {
-        self.icon_color()
     }
 }
 
 // =============================================================================
-// Mesh Shape -- for the Create menu
+// Mesh Shape
 // =============================================================================
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -308,11 +291,9 @@ struct SceneEntity {
     position: [f32; 3],
     rotation: [f32; 3],
     scale: [f32; 3],
-    // Mesh
     mesh_shape: MeshShape,
     cast_shadows: bool,
     receive_shadows: bool,
-    // Physics
     has_physics: bool,
     physics_handle: Option<physics::RigidBodyHandle>,
     body_kind: BodyKind,
@@ -324,7 +305,6 @@ struct SceneEntity {
     gravity_scale: f32,
     is_trigger: bool,
     collider_shape: ColliderShape,
-    // Light
     is_light: bool,
     light_kind: LightKind,
     light_color: [f32; 3],
@@ -332,24 +312,20 @@ struct SceneEntity {
     light_range: f32,
     light_spot_angle: f32,
     light_shadows: bool,
-    // Camera
     is_camera: bool,
     camera_projection: CameraProjection,
     camera_fov: f32,
     camera_near: f32,
     camera_far: f32,
     camera_clear_color: [f32; 4],
-    // Audio
     is_audio: bool,
     audio_volume: f32,
     audio_pitch: f32,
     audio_spatial: bool,
     audio_min_dist: f32,
     audio_max_dist: f32,
-    // Script
     has_script: bool,
     script_file: String,
-    // Tags
     tags: Vec<String>,
 }
 
@@ -407,16 +383,11 @@ impl SceneEntity {
 }
 
 // =============================================================================
-// Transform Mode / Coord Space / Pivot
+// Gizmo / Transform enums
 // =============================================================================
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum GizmoMode {
-    Select,
-    Translate,
-    Rotate,
-    Scale,
-}
+enum GizmoMode { Select, Translate, Rotate, Scale }
 
 impl GizmoMode {
     fn label(&self) -> &str {
@@ -427,16 +398,6 @@ impl GizmoMode {
             GizmoMode::Scale => "Scale",
         }
     }
-
-    fn short_label(&self) -> &str {
-        match self {
-            GizmoMode::Select => "Q",
-            GizmoMode::Translate => "W",
-            GizmoMode::Rotate => "E",
-            GizmoMode::Scale => "R",
-        }
-    }
-
     fn icon(&self) -> &str {
         match self {
             GizmoMode::Select => "->",
@@ -448,19 +409,12 @@ impl GizmoMode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum CoordSpace {
-    Local,
-    World,
-}
-
+enum CoordSpace { Local, World }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PivotMode {
-    Center,
-    Pivot,
-}
+enum PivotMode { Center, Pivot }
 
 // =============================================================================
-// Console Log
+// Console
 // =============================================================================
 
 #[derive(Clone)]
@@ -472,25 +426,18 @@ struct LogEntry {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum LogLevel {
-    Info,
-    Warn,
-    Error,
-    System,
-    Debug,
-}
+enum LogLevel { Info, Warn, Error, System, Debug }
 
 impl LogLevel {
-    fn color(&self) -> egui::Color32 {
+    fn color(&self) -> Color {
         match self {
-            LogLevel::Info => TEXT_NORMAL,
-            LogLevel::Warn => YELLOW,
-            LogLevel::Error => RED,
-            LogLevel::System => ACCENT_BRIGHT,
-            LogLevel::Debug => egui::Color32::from_rgb(140, 140, 160),
+            LogLevel::Info => text_normal(),
+            LogLevel::Warn => yellow(),
+            LogLevel::Error => red(),
+            LogLevel::System => accent_bright(),
+            LogLevel::Debug => c(140, 140, 160),
         }
     }
-
     fn prefix(&self) -> &str {
         match self {
             LogLevel::Info => "INF",
@@ -516,13 +463,7 @@ struct PanelVisibility {
 
 impl Default for PanelVisibility {
     fn default() -> Self {
-        Self {
-            hierarchy: true,
-            inspector: true,
-            bottom: true,
-            toolbar: true,
-            status_bar: true,
-        }
+        Self { hierarchy: true, inspector: true, bottom: true, toolbar: true, status_bar: true }
     }
 }
 
@@ -531,57 +472,13 @@ impl Default for PanelVisibility {
 // =============================================================================
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum BottomTab {
-    Console,
-    ContentBrowser,
-    Profiler,
-    Animation,
-}
+enum BottomTab { Console, ContentBrowser, Profiler, Animation }
 
 // =============================================================================
-// Inspector Section Collapse State
-// =============================================================================
-
-struct InspectorSections {
-    transform_open: bool,
-    mesh_open: bool,
-    physics_open: bool,
-    collider_open: bool,
-    light_open: bool,
-    camera_open: bool,
-    audio_open: bool,
-    script_open: bool,
-    material_open: bool,
-    tags_open: bool,
-}
-
-impl Default for InspectorSections {
-    fn default() -> Self {
-        Self {
-            transform_open: true,
-            mesh_open: true,
-            physics_open: true,
-            collider_open: true,
-            light_open: true,
-            camera_open: true,
-            audio_open: true,
-            script_open: true,
-            material_open: false,
-            tags_open: false,
-        }
-    }
-}
-
-// =============================================================================
-// Snap value presets
+// Snap / Speed presets
 // =============================================================================
 
 const SNAP_PRESETS: &[f32] = &[0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0];
-
-// =============================================================================
-// Simulation Speed presets
-// =============================================================================
-
 const SPEED_PRESETS: &[f32] = &[0.25, 0.5, 1.0, 2.0, 4.0];
 
 // =============================================================================
@@ -590,26 +487,18 @@ const SPEED_PRESETS: &[f32] = &[0.25, 0.5, 1.0, 2.0, 4.0];
 
 struct EditorState {
     engine: Engine,
-
-    // Custom UI state management from genovo_ui
     ui_style: UIStyle,
     dock_style: DockStyle,
-
-    // Scene
     entities: Vec<SceneEntity>,
     selected_entity: Option<usize>,
     next_entity_id: u32,
     entity_filter: String,
-
-    // Playback
     is_playing: bool,
     is_paused: bool,
     sim_speed: f32,
     sim_speed_idx: usize,
     play_start_time: Option<Instant>,
     total_sim_time: f64,
-
-    // Transform / gizmo
     gizmo_mode: GizmoMode,
     coord_space: CoordSpace,
     pivot_mode: PivotMode,
@@ -622,8 +511,6 @@ struct EditorState {
     grid_size: f32,
     wireframe_mode: bool,
     stats_visible: bool,
-
-    // Console
     console_log: Vec<LogEntry>,
     console_input: String,
     console_history: Vec<String>,
@@ -631,25 +518,17 @@ struct EditorState {
     console_scroll_to_bottom: bool,
     console_filter_level: Option<LogLevel>,
     console_auto_scroll: bool,
-
-    // Content browser
     asset_path: String,
     asset_search: String,
     asset_view_size: f32,
     asset_show_extensions: bool,
-
-    // Profiler
     frame_times: VecDeque<f64>,
     fps_history: VecDeque<f64>,
     gpu_times: VecDeque<f64>,
-
-    // Animation timeline
     anim_time: f32,
     anim_duration: f32,
     anim_playing: bool,
     anim_loop: bool,
-
-    // Frame timing
     frame_count: u64,
     last_frame: Instant,
     fps: f32,
@@ -657,48 +536,27 @@ struct EditorState {
     start_time: Instant,
     smooth_fps: f32,
     smooth_frame_time: f32,
-
-    // Camera
     camera_yaw: f32,
     camera_pitch: f32,
     camera_dist: f32,
     camera_target: [f32; 3],
     camera_fov: f32,
-
-    // Panels
     panels: PanelVisibility,
     bottom_tab: BottomTab,
     bottom_tab_idx: usize,
     hierarchy_width: f32,
     inspector_width: f32,
     bottom_height: f32,
-
-    // Inspector
-    inspector_sections: InspectorSections,
-
-    // Scene
     scene_name: String,
     scene_modified: bool,
-
-    // Dialogs
     show_about: bool,
     show_preferences: bool,
     show_shortcuts: bool,
-
-    // Keyboard modifiers
     modifiers: ModifiersState,
-
-    // Renaming state
     renaming_entity: Option<usize>,
     rename_buffer: String,
-
-    // Notification
     notification: Option<(String, LogLevel, Instant)>,
-
-    // Undo/Redo -- real UndoStack from genovo_editor
     undo_stack: UndoStack,
-
-    // Recent files
     recent_files: Vec<String>,
 }
 
@@ -766,7 +624,6 @@ impl EditorState {
             hierarchy_width: 220.0,
             inspector_width: 280.0,
             bottom_height: 200.0,
-            inspector_sections: InspectorSections::default(),
             scene_name: "Untitled Scene".to_string(),
             scene_modified: false,
             show_about: false,
@@ -788,8 +645,6 @@ impl EditorState {
     fn log(&mut self, level: LogLevel, text: impl Into<String>) {
         let text = text.into();
         let elapsed = self.start_time.elapsed().as_secs_f64();
-
-        // Collapse consecutive identical messages
         if let Some(last) = self.console_log.last_mut() {
             if last.text == text && last.level == level {
                 last.count += 1;
@@ -797,16 +652,8 @@ impl EditorState {
                 return;
             }
         }
-
-        self.console_log.push(LogEntry {
-            text,
-            level,
-            timestamp: elapsed,
-            count: 1,
-        });
-        if self.console_log.len() > 5000 {
-            self.console_log.drain(0..1000);
-        }
+        self.console_log.push(LogEntry { text, level, timestamp: elapsed, count: 1 });
+        if self.console_log.len() > 5000 { self.console_log.drain(0..1000); }
         self.console_scroll_to_bottom = true;
     }
 
@@ -818,10 +665,7 @@ impl EditorState {
     fn spawn_entity(&mut self, name: &str, etype: EntityType) -> usize {
         let ecs_entity = self.engine.world_mut().spawn_empty();
         self.next_entity_id += 1;
-
         let mut se = SceneEntity::new(ecs_entity, name, etype);
-
-        // Auto-add physics for mesh entities
         if etype == EntityType::Mesh {
             let desc = physics::RigidBodyDesc {
                 body_type: physics::BodyType::Dynamic,
@@ -834,9 +678,7 @@ impl EditorState {
                 let _ = self.engine.physics_mut().add_collider(
                     handle,
                     &physics::ColliderDesc {
-                        shape: physics::CollisionShape::Box {
-                            half_extents: Vec3::new(0.5, 0.5, 0.5),
-                        },
+                        shape: physics::CollisionShape::Box { half_extents: Vec3::new(0.5, 0.5, 0.5) },
                         ..Default::default()
                     },
                 );
@@ -844,7 +686,6 @@ impl EditorState {
                 se.physics_handle = Some(handle);
             }
         }
-
         let idx = self.entities.len();
         self.entities.push(se);
         self.scene_modified = true;
@@ -867,9 +708,7 @@ impl EditorState {
     }
 
     fn delete_entity(&mut self, idx: usize) {
-        if idx >= self.entities.len() {
-            return;
-        }
+        if idx >= self.entities.len() { return; }
         let ent = &self.entities[idx];
         let name = ent.name.clone();
         let pos = ent.position;
@@ -880,22 +719,15 @@ impl EditorState {
         }
         self.engine.world_mut().despawn(ent.entity);
         self.entities.remove(idx);
-        // Fix parent references
         for e in &mut self.entities {
             if let Some(p) = e.parent {
-                if p == idx {
-                    e.parent = None;
-                } else if p > idx {
-                    e.parent = Some(p - 1);
-                }
+                if p == idx { e.parent = None; }
+                else if p > idx { e.parent = Some(p - 1); }
             }
         }
         if let Some(sel) = self.selected_entity {
-            if sel == idx {
-                self.selected_entity = None;
-            } else if sel > idx {
-                self.selected_entity = Some(sel - 1);
-            }
+            if sel == idx { self.selected_entity = None; }
+            else if sel > idx { self.selected_entity = Some(sel - 1); }
         }
         self.scene_modified = true;
         self.push_delete_undo(idx, &name, pos, rot, scl);
@@ -903,22 +735,19 @@ impl EditorState {
     }
 
     fn delete_selected(&mut self) {
-        if let Some(idx) = self.selected_entity {
-            self.delete_entity(idx);
-        }
+        if let Some(idx) = self.selected_entity { self.delete_entity(idx); }
     }
 
     fn duplicate_selected(&mut self) {
         if let Some(idx) = self.selected_entity {
-            if idx >= self.entities.len() {
-                return;
-            }
+            if idx >= self.entities.len() { return; }
             let src = &self.entities[idx];
             let new_name = format!("{} (copy)", src.name);
             let etype = src.entity_type;
             let pos = src.position;
             let rot = src.rotation;
             let scl = src.scale;
+            let mesh_shape = src.mesh_shape;
             let is_light = src.is_light;
             let lc = src.light_color;
             let li = src.light_intensity;
@@ -926,7 +755,6 @@ impl EditorState {
             let ls = src.light_shadows;
             let lk = src.light_kind;
             let is_cam = src.is_camera;
-            let mesh_shape = src.mesh_shape;
 
             let new_idx = self.spawn_entity(&new_name, etype);
             let e = &mut self.entities[new_idx];
@@ -943,10 +771,7 @@ impl EditorState {
             e.mesh_shape = mesh_shape;
 
             if let Some(handle) = e.physics_handle {
-                let _ = self.engine.physics_mut().set_position(
-                    handle,
-                    Vec3::new(e.position[0], e.position[1], e.position[2]),
-                );
+                let _ = self.engine.physics_mut().set_position(handle, Vec3::new(e.position[0], e.position[1], e.position[2]));
             }
             self.selected_entity = Some(new_idx);
             self.push_spawn_undo(new_idx, &self.entities[new_idx].name.clone());
@@ -967,10 +792,7 @@ impl EditorState {
         if idx < self.entities.len() {
             let ent = &self.entities[idx];
             if let Some(handle) = ent.physics_handle {
-                let _ = self.engine.physics_mut().set_position(
-                    handle,
-                    Vec3::new(ent.position[0], ent.position[1], ent.position[2]),
-                );
+                let _ = self.engine.physics_mut().set_position(handle, Vec3::new(ent.position[0], ent.position[1], ent.position[2]));
             }
         }
     }
@@ -982,9 +804,7 @@ impl EditorState {
         } else {
             self.is_playing = true;
             self.is_paused = false;
-            if self.play_start_time.is_none() {
-                self.play_start_time = Some(Instant::now());
-            }
+            if self.play_start_time.is_none() { self.play_start_time = Some(Instant::now()); }
             self.notify("Simulation started", LogLevel::System);
         }
     }
@@ -1004,27 +824,19 @@ impl EditorState {
     }
 
     fn spawn_physics_ball(&mut self) {
-        let idx = self.spawn_entity(
-            &format!("Ball_{}", self.next_entity_id),
-            EntityType::Mesh,
-        );
+        let idx = self.spawn_entity(&format!("Ball_{}", self.next_entity_id), EntityType::Mesh);
         let e = &mut self.entities[idx];
         e.position = [0.0, 8.0, 0.0];
         e.mesh_shape = MeshShape::Sphere;
         e.collider_shape = ColliderShape::Sphere;
         if let Some(handle) = e.physics_handle {
-            let _ = self.engine.physics_mut().set_position(
-                handle,
-                Vec3::new(0.0, 8.0, 0.0),
-            );
+            let _ = self.engine.physics_mut().set_position(handle, Vec3::new(0.0, 8.0, 0.0));
         }
         self.selected_entity = Some(idx);
     }
 
     fn select_next(&mut self) {
-        if self.entities.is_empty() {
-            return;
-        }
+        if self.entities.is_empty() { return; }
         match self.selected_entity {
             Some(i) if i + 1 < self.entities.len() => self.selected_entity = Some(i + 1),
             _ => self.selected_entity = Some(0),
@@ -1032,9 +844,7 @@ impl EditorState {
     }
 
     fn select_prev(&mut self) {
-        if self.entities.is_empty() {
-            return;
-        }
+        if self.entities.is_empty() { return; }
         match self.selected_entity {
             Some(0) => self.selected_entity = Some(self.entities.len() - 1),
             Some(i) => self.selected_entity = Some(i - 1),
@@ -1052,202 +862,83 @@ impl EditorState {
         }
     }
 
-    fn frame_all(&mut self) {
-        if self.entities.is_empty() {
-            self.camera_target = [0.0, 0.0, 0.0];
-            self.camera_dist = 15.0;
-            return;
-        }
-        let mut center = [0.0f32; 3];
-        for e in &self.entities {
-            center[0] += e.position[0];
-            center[1] += e.position[1];
-            center[2] += e.position[2];
-        }
-        let n = self.entities.len() as f32;
-        center[0] /= n;
-        center[1] /= n;
-        center[2] /= n;
-        self.camera_target = center;
-        self.camera_dist = 20.0;
-        self.log(LogLevel::Info, "Framed all entities");
-    }
-
-    fn select_all(&mut self) {
-        if !self.entities.is_empty() {
-            self.selected_entity = Some(0);
-            self.log(LogLevel::Info, "Selected first entity (multi-select not yet supported)");
-        }
-    }
-
     fn new_scene(&mut self) {
-        while !self.entities.is_empty() {
-            self.delete_entity(0);
-        }
+        while !self.entities.is_empty() { self.delete_entity(0); }
         self.scene_name = "Untitled Scene".to_string();
         self.scene_modified = false;
         self.selected_entity = None;
         self.notify("New scene created", LogLevel::System);
     }
 
-    fn save_scene(&mut self) {
-        self.save_scene_to_file("scene.json");
-    }
+    fn save_scene(&mut self) { self.save_scene_to_file("scene.json"); }
 
     fn save_scene_to_file(&mut self, path: &str) {
         let data = serde_json::json!({
             "name": self.scene_name,
             "entities": self.entities.iter().map(|e| {
                 serde_json::json!({
-                    "name": e.name,
-                    "type": format!("{:?}", e.entity_type),
-                    "position": e.position,
-                    "rotation": e.rotation,
-                    "scale": e.scale,
+                    "name": e.name, "type": format!("{:?}", e.entity_type),
+                    "position": e.position, "rotation": e.rotation, "scale": e.scale,
                     "mesh_shape": format!("{:?}", e.mesh_shape),
-                    "has_physics": e.has_physics,
-                    "mass": e.mass,
-                    "friction": e.friction,
-                    "restitution": e.restitution,
+                    "has_physics": e.has_physics, "mass": e.mass, "friction": e.friction, "restitution": e.restitution,
                     "body_kind": format!("{:?}", e.body_kind),
-                    "is_light": e.is_light,
-                    "light_kind": format!("{:?}", e.light_kind),
-                    "light_color": e.light_color,
-                    "light_intensity": e.light_intensity,
-                    "light_range": e.light_range,
-                    "is_camera": e.is_camera,
-                    "camera_fov": e.camera_fov,
-                    "is_audio": e.is_audio,
-                    "audio_volume": e.audio_volume,
-                    "visible": e.visible,
-                    "active": e.active,
-                    "tags": e.tags,
+                    "is_light": e.is_light, "light_kind": format!("{:?}", e.light_kind),
+                    "light_color": e.light_color, "light_intensity": e.light_intensity, "light_range": e.light_range,
+                    "is_camera": e.is_camera, "camera_fov": e.camera_fov,
+                    "is_audio": e.is_audio, "audio_volume": e.audio_volume,
+                    "visible": e.visible, "active": e.active, "tags": e.tags,
                 })
             }).collect::<Vec<_>>()
         });
         match std::fs::write(path, serde_json::to_string_pretty(&data).unwrap()) {
-            Ok(_) => {
-                self.scene_modified = false;
-                self.notify(&format!("Saved: {} -> {}", self.scene_name, path), LogLevel::System);
-            }
-            Err(e) => {
-                self.notify(&format!("Save failed: {}", e), LogLevel::Error);
-            }
+            Ok(_) => { self.scene_modified = false; self.notify(&format!("Saved: {} -> {}", self.scene_name, path), LogLevel::System); }
+            Err(e) => { self.notify(&format!("Save failed: {}", e), LogLevel::Error); }
         }
     }
 
     fn load_scene_from_file(&mut self, path: &str) {
         let content = match std::fs::read_to_string(path) {
             Ok(c) => c,
-            Err(e) => {
-                self.notify(&format!("Load failed: {}", e), LogLevel::Error);
-                return;
-            }
+            Err(e) => { self.notify(&format!("Load failed: {}", e), LogLevel::Error); return; }
         };
         let data: serde_json::Value = match serde_json::from_str(&content) {
             Ok(d) => d,
-            Err(e) => {
-                self.notify(&format!("Parse error: {}", e), LogLevel::Error);
-                return;
-            }
+            Err(e) => { self.notify(&format!("Parse error: {}", e), LogLevel::Error); return; }
         };
-
-        while !self.entities.is_empty() {
-            self.delete_entity(0);
-        }
-
-        if let Some(name) = data["name"].as_str() {
-            self.scene_name = name.to_string();
-        }
-
+        while !self.entities.is_empty() { self.delete_entity(0); }
+        if let Some(name) = data["name"].as_str() { self.scene_name = name.to_string(); }
         if let Some(entities) = data["entities"].as_array() {
             for ent_data in entities {
                 let name = ent_data["name"].as_str().unwrap_or("Entity");
                 let type_str = ent_data["type"].as_str().unwrap_or("Empty");
                 let etype = match type_str {
-                    "Mesh" => EntityType::Mesh,
-                    "Light" => EntityType::Light,
-                    "Camera" => EntityType::Camera,
-                    "ParticleSystem" => EntityType::ParticleSystem,
-                    "Audio" => EntityType::Audio,
-                    _ => EntityType::Empty,
+                    "Mesh" => EntityType::Mesh, "Light" => EntityType::Light, "Camera" => EntityType::Camera,
+                    "ParticleSystem" => EntityType::ParticleSystem, "Audio" => EntityType::Audio, _ => EntityType::Empty,
                 };
-
                 let idx = self.spawn_entity(name, etype);
                 let e = &mut self.entities[idx];
-
-                if let Some(pos) = ent_data["position"].as_array() {
-                    for (i, v) in pos.iter().enumerate().take(3) {
-                        e.position[i] = v.as_f64().unwrap_or(0.0) as f32;
-                    }
-                }
-                if let Some(rot) = ent_data["rotation"].as_array() {
-                    for (i, v) in rot.iter().enumerate().take(3) {
-                        e.rotation[i] = v.as_f64().unwrap_or(0.0) as f32;
-                    }
-                }
-                if let Some(scl) = ent_data["scale"].as_array() {
-                    for (i, v) in scl.iter().enumerate().take(3) {
-                        e.scale[i] = v.as_f64().unwrap_or(1.0) as f32;
-                    }
-                }
-
-                if let Some(shape_str) = ent_data["mesh_shape"].as_str() {
-                    e.mesh_shape = match shape_str {
-                        "Sphere" => MeshShape::Sphere,
-                        "Cylinder" => MeshShape::Cylinder,
-                        "Capsule" => MeshShape::Capsule,
-                        "Cone" => MeshShape::Cone,
-                        "Plane" => MeshShape::Plane,
-                        _ => MeshShape::Cube,
-                    };
-                }
-
-                e.mass = ent_data["mass"].as_f64().unwrap_or(1.0) as f32;
-                e.friction = ent_data["friction"].as_f64().unwrap_or(0.5) as f32;
-                e.restitution = ent_data["restitution"].as_f64().unwrap_or(0.3) as f32;
-                e.is_light = ent_data["is_light"].as_bool().unwrap_or(false);
-                e.light_intensity = ent_data["light_intensity"].as_f64().unwrap_or(1.0) as f32;
-                e.light_range = ent_data["light_range"].as_f64().unwrap_or(10.0) as f32;
-
-                if let Some(lc) = ent_data["light_color"].as_array() {
-                    for (i, v) in lc.iter().enumerate().take(3) {
-                        e.light_color[i] = v.as_f64().unwrap_or(1.0) as f32;
-                    }
-                }
-
+                if let Some(pos) = ent_data["position"].as_array() { for (i, v) in pos.iter().enumerate().take(3) { e.position[i] = v.as_f64().unwrap_or(0.0) as f32; } }
+                if let Some(rot) = ent_data["rotation"].as_array() { for (i, v) in rot.iter().enumerate().take(3) { e.rotation[i] = v.as_f64().unwrap_or(0.0) as f32; } }
+                if let Some(scl) = ent_data["scale"].as_array() { for (i, v) in scl.iter().enumerate().take(3) { e.scale[i] = v.as_f64().unwrap_or(1.0) as f32; } }
                 if let Some(handle) = e.physics_handle {
-                    let _ = self.engine.physics_mut().set_position(
-                        handle,
-                        Vec3::new(e.position[0], e.position[1], e.position[2]),
-                    );
+                    let _ = self.engine.physics_mut().set_position(handle, Vec3::new(e.position[0], e.position[1], e.position[2]));
                 }
             }
         }
-
         self.scene_modified = false;
         self.selected_entity = None;
         self.notify(&format!("Loaded: {} from {}", self.scene_name, path), LogLevel::System);
     }
 
-    // =========================================================================
-    // Undo / Redo -- wired to the real UndoStack
-    // =========================================================================
-
+    // Undo/Redo
     fn push_move_undo(&mut self, ei: usize, old: [f32; 3], new: [f32; 3]) {
-        self.undo_stack.push(Box::new(MoveEntityOp::new(
-            UndoEntityId(ei as u64), UndoVec3::new(old[0], old[1], old[2]), UndoVec3::new(new[0], new[1], new[2]),
-        )), true);
+        self.undo_stack.push(Box::new(MoveEntityOp::new(UndoEntityId(ei as u64), UndoVec3::new(old[0], old[1], old[2]), UndoVec3::new(new[0], new[1], new[2]))), true);
     }
     fn push_rotate_undo(&mut self, ei: usize, old: [f32; 3], new: [f32; 3]) {
-        self.undo_stack.push(Box::new(RotateEntityOp::new(
-            UndoEntityId(ei as u64), UndoQuat::new(old[0], old[1], old[2], 0.0), UndoQuat::new(new[0], new[1], new[2], 0.0),
-        )), true);
+        self.undo_stack.push(Box::new(RotateEntityOp::new(UndoEntityId(ei as u64), UndoQuat::new(old[0], old[1], old[2], 0.0), UndoQuat::new(new[0], new[1], new[2], 0.0))), true);
     }
     fn push_scale_undo(&mut self, ei: usize, old: [f32; 3], new: [f32; 3]) {
-        self.undo_stack.push(Box::new(ScaleEntityOp::new(
-            UndoEntityId(ei as u64), UndoVec3::new(old[0], old[1], old[2]), UndoVec3::new(new[0], new[1], new[2]),
-        )), true);
+        self.undo_stack.push(Box::new(ScaleEntityOp::new(UndoEntityId(ei as u64), UndoVec3::new(old[0], old[1], old[2]), UndoVec3::new(new[0], new[1], new[2]))), true);
     }
     fn push_spawn_undo(&mut self, ei: usize, name: &str) {
         self.undo_stack.push_no_merge(Box::new(SpawnEntityOp::new(SerializedEntityData {
@@ -1277,9 +968,7 @@ impl EditorState {
         }
     }
 
-    // =========================================================================
-    // Script VM with world bindings
-    // =========================================================================
+    // Script VM
     fn execute_script_with_bindings(&mut self, code: &str) {
         use std::sync::Mutex;
         let ep: Arc<Mutex<Vec<(String, [f32; 3])>>> = Arc::new(Mutex::new(self.entities.iter().map(|e| (e.name.clone(), e.position)).collect()));
@@ -1298,7 +987,7 @@ impl EditorState {
               let g = p.lock().unwrap(); if i >= g.len() { return Err(ScriptError::RuntimeError(format!("index {} OOB", i))); }
               Ok(ScriptValue::Vec3(g[i].1[0], g[i].1[1], g[i].1[2]))
           }) as NativeFn); }
-        { let p = Arc::clone(&ep); let c = Arc::clone(&pc);
+        { let p = Arc::clone(&ep); let cc = Arc::clone(&pc);
           let _ = vm.register_function("set_pos", Box::new(move |args: &[ScriptValue]| {
               if args.len() != 4 { return Err(ScriptError::ArityMismatch { function: "set_pos".into(), expected: 4, got: args.len() as u8 }); }
               let i = match &args[0] { ScriptValue::Int(i) => *i as usize, _ => return Err(ScriptError::TypeError("set_pos idx".into())) };
@@ -1306,7 +995,7 @@ impl EditorState {
               let y = match &args[2] { ScriptValue::Float(f) => *f as f32, ScriptValue::Int(v) => *v as f32, _ => return Err(ScriptError::TypeError("y".into())) };
               let z = match &args[3] { ScriptValue::Float(f) => *f as f32, ScriptValue::Int(v) => *v as f32, _ => return Err(ScriptError::TypeError("z".into())) };
               let mut g = p.lock().unwrap(); if i >= g.len() { return Err(ScriptError::RuntimeError(format!("index {} OOB", i))); }
-              g[i].1 = [x, y, z]; c.lock().unwrap().push((i, [x, y, z])); Ok(ScriptValue::Nil)
+              g[i].1 = [x, y, z]; cc.lock().unwrap().push((i, [x, y, z])); Ok(ScriptValue::Nil)
           }) as NativeFn); }
         match vm.load_script("console", code) {
             Ok(_) => match vm.execute("console", &mut ScriptContext::new()) {
@@ -1324,58 +1013,37 @@ impl EditorState {
         }
     }
 
-    // =========================================================================
     // Console command execution
-    // =========================================================================
-
     fn execute_console_command(&mut self, cmd: &str) {
         self.log(LogLevel::Info, format!("> {}", cmd));
         let parts: Vec<&str> = cmd.trim().split_whitespace().collect();
-        if parts.is_empty() {
-            return;
-        }
+        if parts.is_empty() { return; }
         match parts[0] {
             "help" => {
                 self.log(LogLevel::System, "--- Genovo Studio Console Commands ---");
-                self.log(LogLevel::System, "  help                 Show this help");
-                self.log(LogLevel::System, "  clear                Clear console");
-                self.log(LogLevel::System, "  stats                Engine statistics");
-                self.log(LogLevel::System, "  spawn <type> [name]  Spawn entity");
-                self.log(LogLevel::System, "  delete               Delete selected entity");
-                self.log(LogLevel::System, "  list                 List all entities");
-                self.log(LogLevel::System, "  select <index>       Select entity by index");
-                self.log(LogLevel::System, "  physics start|stop|step  Control physics");
-                self.log(LogLevel::System, "  terrain gen          Generate procedural terrain");
-                self.log(LogLevel::System, "  dungeon gen          Generate BSP dungeon");
-                self.log(LogLevel::System, "  script <code>        Execute GenovoScript");
-                self.log(LogLevel::System, "  gravity <x> <y> <z>  Set gravity vector");
-                self.log(LogLevel::System, "  scene <name>         Rename scene");
-                self.log(LogLevel::System, "  camera <yaw> <pitch> <dist>  Set camera");
-                self.log(LogLevel::System, "  speed <value>        Set simulation speed");
-                self.log(LogLevel::System, "  about                Show version info");
+                self.log(LogLevel::System, "  help / clear / stats / list / about");
+                self.log(LogLevel::System, "  spawn <type> [name] / delete / select <idx>");
+                self.log(LogLevel::System, "  physics start|stop|step / gravity <x> <y> <z>");
+                self.log(LogLevel::System, "  terrain gen / dungeon gen / script <code>");
+                self.log(LogLevel::System, "  camera <yaw> <pitch> <dist> / speed <val>");
+                self.log(LogLevel::System, "  scene <name>");
             }
             "clear" => { self.console_log.clear(); }
             "about" => {
                 self.log(LogLevel::System, "Genovo Studio v1.0 -- Professional Game Development Environment");
                 self.log(LogLevel::System, "26 engine modules fully linked");
-                self.log(LogLevel::System, "UI: egui rendering backend + custom Slate state management");
+                self.log(LogLevel::System, "UI: Custom Slate (UIGpuRenderer) with bitmap font");
             }
             "stats" => {
                 let ecs_count = self.engine.world().entity_count();
                 let body_count = self.engine.physics().body_count();
                 let active = self.engine.physics().active_body_count();
-                self.log(LogLevel::System, format!("ECS entities:    {}", ecs_count));
-                self.log(LogLevel::System, format!("Scene entities:  {}", self.entities.len()));
-                self.log(LogLevel::System, format!("Physics bodies:  {} ({} active)", body_count, active));
-                self.log(LogLevel::System, format!("FPS:             {:.1}", self.smooth_fps));
-                self.log(LogLevel::System, format!("Frame time:      {:.2} ms", self.smooth_frame_time));
-                self.log(LogLevel::System, format!("Sim speed:       {:.2}x", self.sim_speed));
-                self.log(LogLevel::System, format!("Frame count:     {}", self.frame_count));
+                self.log(LogLevel::System, format!("ECS: {}  Scene: {}  Physics: {} ({} active)  FPS: {:.0}  Frame: {:.2}ms",
+                    ecs_count, self.entities.len(), body_count, active, self.smooth_fps, self.smooth_frame_time));
             }
             "list" => {
-                if self.entities.is_empty() {
-                    self.log(LogLevel::Info, "No entities in scene");
-                } else {
+                if self.entities.is_empty() { self.log(LogLevel::Info, "No entities"); }
+                else {
                     let msgs: Vec<String> = self.entities.iter().enumerate().map(|(i, e)| {
                         let sel = if self.selected_entity == Some(i) { " *" } else { "" };
                         format!("  [{}] {} ({}) pos=({:.1},{:.1},{:.1}){}", i, e.name, e.entity_type, e.position[0], e.position[1], e.position[2], sel)
@@ -1386,12 +1054,10 @@ impl EditorState {
             "select" => {
                 if let Some(idx_str) = parts.get(1) {
                     if let Ok(idx) = idx_str.parse::<usize>() {
-                        if idx < self.entities.len() {
-                            self.selected_entity = Some(idx);
-                            self.log(LogLevel::System, format!("Selected: {}", self.entities[idx].name));
-                        } else { self.log(LogLevel::Error, format!("Index {} out of range", idx)); }
+                        if idx < self.entities.len() { self.selected_entity = Some(idx); self.log(LogLevel::System, format!("Selected: {}", self.entities[idx].name)); }
+                        else { self.log(LogLevel::Error, format!("Index {} out of range", idx)); }
                     } else { self.log(LogLevel::Error, "Usage: select <index>"); }
-                } else { self.log(LogLevel::Error, "Usage: select <index>"); }
+                }
             }
             "delete" => { self.delete_selected(); }
             "spawn" => {
@@ -1400,17 +1066,9 @@ impl EditorState {
                     "cube" | "mesh" => { let i = self.spawn_mesh(MeshShape::Cube); self.selected_entity = Some(i); }
                     "sphere" => { let i = self.spawn_mesh(MeshShape::Sphere); self.selected_entity = Some(i); }
                     "cylinder" => { let i = self.spawn_mesh(MeshShape::Cylinder); self.selected_entity = Some(i); }
-                    "capsule" => { let i = self.spawn_mesh(MeshShape::Capsule); self.selected_entity = Some(i); }
-                    "cone" => { let i = self.spawn_mesh(MeshShape::Cone); self.selected_entity = Some(i); }
-                    "plane" => { let i = self.spawn_mesh(MeshShape::Plane); self.selected_entity = Some(i); }
                     "light" => { let i = self.spawn_light(LightKind::Point); self.selected_entity = Some(i); }
                     "camera" => { let i = self.spawn_entity("Camera", EntityType::Camera); self.selected_entity = Some(i); }
-                    "particles" => { let i = self.spawn_entity("Particles", EntityType::ParticleSystem); self.selected_entity = Some(i); }
-                    "audio" => { let i = self.spawn_entity("Audio Source", EntityType::Audio); self.selected_entity = Some(i); }
-                    _ => {
-                        let name = if parts.len() > 2 { parts[2..].join(" ") } else { "Empty".to_string() };
-                        let i = self.spawn_entity(&name, EntityType::Empty); self.selected_entity = Some(i);
-                    }
+                    _ => { let name = if parts.len() > 2 { parts[2..].join(" ") } else { "Empty".to_string() }; let i = self.spawn_entity(&name, EntityType::Empty); self.selected_entity = Some(i); }
                 }
             }
             "physics" => match parts.get(1).copied() {
@@ -1425,58 +1083,37 @@ impl EditorState {
                     let y: f32 = parts[2].parse().unwrap_or(-9.81);
                     let z: f32 = parts[3].parse().unwrap_or(0.0);
                     self.engine.physics_mut().set_gravity(Vec3::new(x, y, z));
-                    self.log(LogLevel::System, format!("Gravity set to ({}, {}, {})", x, y, z));
-                } else {
-                    let g = self.engine.physics().gravity();
-                    self.log(LogLevel::Info, format!("Current gravity: ({:.2}, {:.2}, {:.2})", g.x, g.y, g.z));
+                    self.log(LogLevel::System, format!("Gravity: ({}, {}, {})", x, y, z));
                 }
             }
             "speed" => {
                 if let Some(val) = parts.get(1) {
-                    if let Ok(s) = val.parse::<f32>() {
-                        self.sim_speed = s.clamp(0.0, 10.0);
-                        self.log(LogLevel::System, format!("Simulation speed: {:.2}x", self.sim_speed));
-                    }
-                } else { self.log(LogLevel::Info, format!("Speed: {:.2}x", self.sim_speed)); }
+                    if let Ok(s) = val.parse::<f32>() { self.sim_speed = s.clamp(0.0, 10.0); self.log(LogLevel::System, format!("Speed: {:.2}x", self.sim_speed)); }
+                }
             }
             "camera" => {
                 if parts.len() == 4 {
                     self.camera_yaw = parts[1].parse().unwrap_or(self.camera_yaw);
                     self.camera_pitch = parts[2].parse().unwrap_or(self.camera_pitch);
                     self.camera_dist = parts[3].parse().unwrap_or(self.camera_dist);
-                    self.log(LogLevel::System, format!("Camera: yaw={:.1} pitch={:.1} dist={:.1}", self.camera_yaw, self.camera_pitch, self.camera_dist));
-                } else {
-                    self.log(LogLevel::Info, format!("Camera: yaw={:.1} pitch={:.1} dist={:.1}", self.camera_yaw, self.camera_pitch, self.camera_dist));
                 }
             }
             "scene" => {
-                if parts.len() > 1 {
-                    self.scene_name = parts[1..].join(" ");
-                    self.scene_modified = true;
-                    self.log(LogLevel::System, format!("Scene renamed to: {}", self.scene_name));
-                } else { self.log(LogLevel::Info, format!("Current scene: {}", self.scene_name)); }
+                if parts.len() > 1 { self.scene_name = parts[1..].join(" "); self.scene_modified = true; }
             }
             "terrain" if parts.get(1) == Some(&"gen") => {
                 match genovo_terrain::Heightmap::generate_procedural(257, 0.7, 42) {
-                    Ok(h) => self.log(LogLevel::System, format!("Terrain 257x257 generated [min={:.2}, max={:.2}]", h.min_height(), h.max_height())),
+                    Ok(h) => self.log(LogLevel::System, format!("Terrain 257x257 [min={:.2}, max={:.2}]", h.min_height(), h.max_height())),
                     Err(e) => self.log(LogLevel::Error, format!("Terrain error: {}", e)),
                 }
             }
             "dungeon" if parts.get(1) == Some(&"gen") => {
-                let cfg = genovo_procgen::BSPConfig {
-                    width: 80, height: 60, min_room_size: 6, max_depth: 8,
-                    room_fill_ratio: 0.7, seed: 42, wall_padding: 1,
-                };
+                let cfg = genovo_procgen::BSPConfig { width: 80, height: 60, min_room_size: 6, max_depth: 8, room_fill_ratio: 0.7, seed: 42, wall_padding: 1 };
                 let d = genovo_procgen::dungeon::generate_bsp(&cfg);
-                self.log(LogLevel::System, format!("Dungeon generated: {} rooms", d.rooms.len()));
+                self.log(LogLevel::System, format!("Dungeon: {} rooms", d.rooms.len()));
             }
-            "script" => {
-                let code = parts[1..].join(" ");
-                self.execute_script_with_bindings(&code);
-            }
-            other => {
-                self.log(LogLevel::Warn, format!("Unknown command: '{}'. Type 'help' for commands.", other));
-            }
+            "script" => { let code = parts[1..].join(" "); self.execute_script_with_bindings(&code); }
+            other => { self.log(LogLevel::Warn, format!("Unknown: '{}'. Type 'help'.", other)); }
         }
     }
 }
@@ -1492,54 +1129,596 @@ fn submit_console(state: &mut EditorState) {
 }
 
 // =============================================================================
-// Asset browser helpers
+// UI Drawing functions using UIGpuRenderer
 // =============================================================================
 
-struct AssetEntry {
-    name: String,
-    is_dir: bool,
-}
+/// Draw the complete editor UI. Called each frame with the renderer.
+fn draw_editor_ui(r: &mut UIGpuRenderer, state: &EditorState) {
+    let screen = r.screen_size();
+    let sw = screen.x;
+    let sh = screen.y;
 
-fn scan_asset_dir(path: &str, filter: &str) -> Vec<AssetEntry> {
-    let mut entries = Vec::new();
-    if let Ok(dir) = std::fs::read_dir(path) {
-        for entry in dir.flatten() {
-            let name = entry.file_name().to_string_lossy().to_string();
-            if !filter.is_empty() && !name.to_lowercase().contains(&filter.to_lowercase()) { continue; }
-            let is_dir = entry.file_type().map_or(false, |t| t.is_dir());
-            entries.push(AssetEntry { name, is_dir });
+    // Layout parameters
+    let menu_h = 24.0;
+    let toolbar_h = if state.panels.toolbar { 30.0 } else { 0.0 };
+    let status_h = if state.panels.status_bar { 22.0 } else { 0.0 };
+    let hier_w = if state.panels.hierarchy { state.hierarchy_width } else { 0.0 };
+    let insp_w = if state.panels.inspector { state.inspector_width } else { 0.0 };
+    let bottom_h = if state.panels.bottom { state.bottom_height } else { 0.0 };
+    let top_y = menu_h + toolbar_h;
+
+    // Menu bar background
+    r.draw_rect(Rect::new(glam::Vec2::ZERO, glam::Vec2::new(sw, menu_h)), bg_base(), 0.0);
+    draw_menu_bar(r, state, sw, menu_h);
+
+    // Toolbar
+    if state.panels.toolbar {
+        let toolbar_rect = Rect::new(glam::Vec2::new(0.0, menu_h), glam::Vec2::new(sw, menu_h + toolbar_h));
+        r.draw_rect(toolbar_rect, bg_panel(), 0.0);
+        draw_toolbar(r, state, sw, menu_h, toolbar_h);
+    }
+
+    // Hierarchy panel (left)
+    if state.panels.hierarchy {
+        let hier_rect = Rect::new(
+            glam::Vec2::new(0.0, top_y),
+            glam::Vec2::new(hier_w, sh - bottom_h - status_h),
+        );
+        r.draw_rect(hier_rect, bg_panel(), 0.0);
+        // Border
+        r.draw_rect(Rect::new(glam::Vec2::new(hier_w - 1.0, top_y), glam::Vec2::new(hier_w, sh - bottom_h - status_h)), border_color(), 0.0);
+
+        r.push_clip(hier_rect);
+        draw_hierarchy(r, state, hier_w, top_y, sh - bottom_h - status_h);
+        r.pop_clip();
+    }
+
+    // Inspector panel (right)
+    if state.panels.inspector {
+        let insp_x = sw - insp_w;
+        let insp_rect = Rect::new(
+            glam::Vec2::new(insp_x, top_y),
+            glam::Vec2::new(sw, sh - bottom_h - status_h),
+        );
+        r.draw_rect(insp_rect, bg_panel(), 0.0);
+        r.draw_rect(Rect::new(glam::Vec2::new(insp_x, top_y), glam::Vec2::new(insp_x + 1.0, sh - bottom_h - status_h)), border_color(), 0.0);
+
+        r.push_clip(insp_rect);
+        draw_inspector(r, state, insp_x, top_y, sw, sh - bottom_h - status_h);
+        r.pop_clip();
+    }
+
+    // Bottom panel
+    if state.panels.bottom {
+        let bottom_top = sh - bottom_h - status_h;
+        let bottom_rect = Rect::new(
+            glam::Vec2::new(0.0, bottom_top),
+            glam::Vec2::new(sw, sh - status_h),
+        );
+        r.draw_rect(bottom_rect, bg_panel(), 0.0);
+        r.draw_rect(Rect::new(glam::Vec2::new(0.0, bottom_top), glam::Vec2::new(sw, bottom_top + 1.0)), border_color(), 0.0);
+
+        r.push_clip(bottom_rect);
+        draw_bottom_panel(r, state, sw, bottom_top, sh - status_h);
+        r.pop_clip();
+    }
+
+    // Viewport area -- just draw an overlay label
+    {
+        let vp_x = hier_w;
+        let vp_y = top_y;
+        let vp_w = sw - hier_w - insp_w;
+        let vp_h = sh - top_y - bottom_h - status_h;
+        if vp_w > 0.0 && vp_h > 0.0 {
+            draw_viewport_overlay(r, state, vp_x, vp_y, vp_w, vp_h);
         }
     }
-    entries.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then(a.name.cmp(&b.name)));
-    entries
+
+    // Status bar
+    if state.panels.status_bar {
+        let sb_rect = Rect::new(glam::Vec2::new(0.0, sh - status_h), glam::Vec2::new(sw, sh));
+        r.draw_rect(sb_rect, bg_base(), 0.0);
+        r.draw_rect(Rect::new(glam::Vec2::new(0.0, sh - status_h), glam::Vec2::new(sw, sh - status_h + 1.0)), border_color(), 0.0);
+        draw_status_bar(r, state, sw, sh, status_h);
+    }
+
+    // FPS overlay
+    if state.stats_visible {
+        draw_fps_overlay(r, state);
+    }
+
+    // Notification toast
+    draw_notification(r, state, sw, sh);
 }
 
-fn asset_icon(name: &str, is_dir: bool) -> &'static str {
-    if is_dir { return "[D]"; }
-    match name.rsplit('.').next().unwrap_or("") {
-        "obj" | "fbx" | "gltf" | "glb" => "[3D]",
-        "png" | "jpg" | "jpeg" | "bmp" | "tga" | "dds" | "hdr" => "[TX]",
-        "wav" | "ogg" | "mp3" | "flac" => "[AU]",
-        "rs" | "lua" | "py" | "js" | "ts" => "[SC]",
-        "ron" | "json" | "toml" | "yaml" | "yml" => "[CF]",
-        "scene" | "scn" => "[SN]",
-        "wgsl" | "glsl" | "hlsl" | "spv" => "[SH]",
-        "ttf" | "otf" | "woff" | "woff2" => "[FN]",
-        "mat" | "material" => "[MT]",
-        _ => "[??]",
+fn draw_menu_bar(r: &mut UIGpuRenderer, state: &EditorState, sw: f32, h: f32) {
+    let fs = 14.0;
+    let mut x = 8.0;
+    let y = (h - fs) * 0.5;
+
+    r.draw_text("Genovo Studio", glam::Vec2::new(x, y), fs, accent());
+    x += r.text_width("Genovo Studio", fs) + 12.0;
+
+    r.draw_text("|", glam::Vec2::new(x, y), fs, border_color());
+    x += 12.0;
+
+    let menus = ["File", "Edit", "Create", "View", "Window", "Help"];
+    for label in &menus {
+        r.draw_text(label, glam::Vec2::new(x, y), fs, text_normal());
+        x += r.text_width(label, fs) + 14.0;
     }
 }
 
-fn asset_color(name: &str) -> egui::Color32 {
-    match name.rsplit('.').next().unwrap_or("") {
-        "obj" | "fbx" | "gltf" | "glb" => CYAN,
-        "png" | "jpg" | "jpeg" | "bmp" | "tga" | "dds" | "hdr" => GREEN,
-        "wav" | "ogg" | "mp3" | "flac" => ORANGE,
-        "rs" | "lua" | "py" | "js" | "ts" => MAGENTA,
-        "ron" | "json" | "toml" | "yaml" | "yml" => TEXT_DIM,
-        "scene" | "scn" => ACCENT,
-        "wgsl" | "glsl" | "hlsl" | "spv" => RED,
-        _ => TEXT_MUTED,
+fn draw_toolbar(r: &mut UIGpuRenderer, state: &EditorState, sw: f32, top: f32, h: f32) {
+    let fs = 12.0;
+    let mut x = 8.0;
+    let y = top + (h - fs) * 0.5;
+
+    // Gizmo mode buttons
+    for mode in [GizmoMode::Select, GizmoMode::Translate, GizmoMode::Rotate, GizmoMode::Scale] {
+        let label = format!("{} {}", mode.icon(), mode.label());
+        let color = if state.gizmo_mode == mode { accent_bright() } else { text_dim() };
+        if state.gizmo_mode == mode {
+            let w = r.text_width(&label, fs) + 8.0;
+            r.draw_rect(Rect::new(glam::Vec2::new(x - 4.0, y - 2.0), glam::Vec2::new(x + w - 4.0, y + fs + 2.0)), bg_widget(), 3.0);
+        }
+        r.draw_text(&label, glam::Vec2::new(x, y), fs, color);
+        x += r.text_width(&label, fs) + 14.0;
+    }
+
+    x += 10.0;
+    r.draw_text("|", glam::Vec2::new(x, y), fs, border_color());
+    x += 14.0;
+
+    // Play/Pause/Stop
+    let play_label = if state.is_playing && !state.is_paused { "|| Pause" } else { "> Play" };
+    let play_color = if state.is_playing && !state.is_paused { green() } else { text_normal() };
+    r.draw_text(play_label, glam::Vec2::new(x, y), fs, play_color);
+    x += r.text_width(play_label, fs) + 10.0;
+
+    r.draw_text("[] Stop", glam::Vec2::new(x, y), fs, red());
+    x += r.text_width("[] Stop", fs) + 10.0;
+
+    r.draw_text("|> Step", glam::Vec2::new(x, y), fs, text_dim());
+    x += r.text_width("|> Step", fs) + 14.0;
+
+    r.draw_text("|", glam::Vec2::new(x, y), fs, border_color());
+    x += 14.0;
+
+    // Snap/Grid/Stats
+    let snap_col = if state.snap_enabled { accent_bright() } else { text_dim() };
+    r.draw_text("Snap", glam::Vec2::new(x, y), fs, snap_col);
+    x += r.text_width("Snap", fs) + 10.0;
+
+    let grid_col = if state.grid_visible { accent_bright() } else { text_dim() };
+    r.draw_text("Grid", glam::Vec2::new(x, y), fs, grid_col);
+    x += r.text_width("Grid", fs) + 10.0;
+
+    let stats_col = if state.stats_visible { accent_bright() } else { text_dim() };
+    r.draw_text("Stats", glam::Vec2::new(x, y), fs, stats_col);
+    x += r.text_width("Stats", fs) + 10.0;
+
+    // Speed indicator on right
+    let speed_text = format!("{:.1}x", state.sim_speed);
+    let stw = r.text_width(&speed_text, fs);
+    r.draw_text(&speed_text, glam::Vec2::new(sw - stw - 10.0, y), fs, text_dim());
+}
+
+fn draw_hierarchy(r: &mut UIGpuRenderer, state: &EditorState, width: f32, top: f32, bottom: f32) {
+    let fs = 13.0;
+    let line_h = 20.0;
+    let pad = 6.0;
+    let mut y = top + 4.0;
+
+    // Header
+    r.draw_text("Scene Hierarchy", glam::Vec2::new(pad, y), fs, text_bright());
+    y += line_h;
+
+    // Separator
+    r.draw_rect(Rect::new(glam::Vec2::new(pad, y), glam::Vec2::new(width - pad, y + 1.0)), border_color(), 0.0);
+    y += 4.0;
+
+    // Entity list
+    let fs_item = 12.0;
+    for (i, ent) in state.entities.iter().enumerate() {
+        if y + line_h > bottom { break; }
+
+        let selected = state.selected_entity == Some(i);
+
+        // Selection highlight
+        if selected {
+            r.draw_rect(
+                Rect::new(glam::Vec2::new(0.0, y), glam::Vec2::new(width, y + line_h)),
+                accent_bg(), 0.0,
+            );
+        }
+
+        // Entity type dot
+        let dot_x = pad + 4.0;
+        let dot_y = y + (line_h - 6.0) * 0.5;
+        r.draw_circle(glam::Vec2::new(dot_x + 3.0, dot_y + 3.0), 3.0, ent.entity_type.icon_color());
+
+        // Entity name
+        let label = format!("{} [{}]", ent.name, ent.entity_type.icon_letter());
+        let name_color = if selected { text_bright() } else { text_normal() };
+        r.draw_text(&label, glam::Vec2::new(pad + 16.0, y + (line_h - fs_item) * 0.5), fs_item, name_color);
+
+        // Position on right side
+        let pos_text = format!("({:.1},{:.1},{:.1})", ent.position[0], ent.position[1], ent.position[2]);
+        let ptw = r.text_width(&pos_text, 10.0);
+        if pad + 16.0 + r.text_width(&label, fs_item) + ptw + 10.0 < width {
+            r.draw_text(&pos_text, glam::Vec2::new(width - ptw - pad, y + (line_h - 10.0) * 0.5), 10.0, text_muted());
+        }
+
+        y += line_h;
+    }
+
+    // Entity count at bottom
+    if state.entities.is_empty() {
+        r.draw_text("(empty scene)", glam::Vec2::new(pad, y + 4.0), 11.0, text_muted());
+    }
+}
+
+fn draw_inspector(r: &mut UIGpuRenderer, state: &EditorState, x: f32, top: f32, right: f32, bottom: f32) {
+    let fs = 13.0;
+    let fs_small = 11.0;
+    let line_h = 18.0;
+    let pad = x + 8.0;
+    let mut y = top + 4.0;
+
+    r.draw_text("Inspector", glam::Vec2::new(pad, y), fs, text_bright());
+    y += 20.0;
+
+    r.draw_rect(Rect::new(glam::Vec2::new(x + 6.0, y), glam::Vec2::new(right - 6.0, y + 1.0)), border_color(), 0.0);
+    y += 4.0;
+
+    let idx = match state.selected_entity {
+        Some(i) if i < state.entities.len() => i,
+        _ => {
+            r.draw_text("No entity selected", glam::Vec2::new(pad, y + 4.0), 12.0, text_muted());
+            return;
+        }
+    };
+
+    let ent = &state.entities[idx];
+
+    // Entity name
+    r.draw_text(&ent.name, glam::Vec2::new(pad, y), fs, accent_bright());
+    y += line_h;
+
+    r.draw_text(&format!("Type: {}", ent.entity_type), glam::Vec2::new(pad, y), fs_small, text_dim());
+    y += line_h + 4.0;
+
+    // Transform section
+    r.draw_rect(Rect::new(glam::Vec2::new(x + 6.0, y), glam::Vec2::new(right - 6.0, y + 1.0)), border_color(), 0.0);
+    y += 4.0;
+    r.draw_text("+ Transform", glam::Vec2::new(pad, y), fs, text_bright());
+    y += line_h;
+
+    // Position
+    r.draw_text("Position", glam::Vec2::new(pad, y), fs_small, text_dim());
+    y += 14.0;
+    let pos_text = format!("X: {:.2}  Y: {:.2}  Z: {:.2}", ent.position[0], ent.position[1], ent.position[2]);
+    r.draw_text("X:", glam::Vec2::new(pad, y), fs_small, x_color());
+    r.draw_text(&format!("{:.2}", ent.position[0]), glam::Vec2::new(pad + 18.0, y), fs_small, text_normal());
+    let rx = pad + 80.0;
+    r.draw_text("Y:", glam::Vec2::new(rx, y), fs_small, y_color());
+    r.draw_text(&format!("{:.2}", ent.position[1]), glam::Vec2::new(rx + 18.0, y), fs_small, text_normal());
+    let rz = pad + 160.0;
+    r.draw_text("Z:", glam::Vec2::new(rz, y), fs_small, z_color());
+    r.draw_text(&format!("{:.2}", ent.position[2]), glam::Vec2::new(rz + 18.0, y), fs_small, text_normal());
+    y += line_h;
+
+    // Rotation
+    r.draw_text("Rotation", glam::Vec2::new(pad, y), fs_small, text_dim());
+    y += 14.0;
+    r.draw_text("X:", glam::Vec2::new(pad, y), fs_small, x_color());
+    r.draw_text(&format!("{:.1}d", ent.rotation[0]), glam::Vec2::new(pad + 18.0, y), fs_small, text_normal());
+    r.draw_text("Y:", glam::Vec2::new(rx, y), fs_small, y_color());
+    r.draw_text(&format!("{:.1}d", ent.rotation[1]), glam::Vec2::new(rx + 18.0, y), fs_small, text_normal());
+    r.draw_text("Z:", glam::Vec2::new(rz, y), fs_small, z_color());
+    r.draw_text(&format!("{:.1}d", ent.rotation[2]), glam::Vec2::new(rz + 18.0, y), fs_small, text_normal());
+    y += line_h;
+
+    // Scale
+    r.draw_text("Scale", glam::Vec2::new(pad, y), fs_small, text_dim());
+    y += 14.0;
+    r.draw_text("X:", glam::Vec2::new(pad, y), fs_small, x_color());
+    r.draw_text(&format!("{:.2}", ent.scale[0]), glam::Vec2::new(pad + 18.0, y), fs_small, text_normal());
+    r.draw_text("Y:", glam::Vec2::new(rx, y), fs_small, y_color());
+    r.draw_text(&format!("{:.2}", ent.scale[1]), glam::Vec2::new(rx + 18.0, y), fs_small, text_normal());
+    r.draw_text("Z:", glam::Vec2::new(rz, y), fs_small, z_color());
+    r.draw_text(&format!("{:.2}", ent.scale[2]), glam::Vec2::new(rz + 18.0, y), fs_small, text_normal());
+    y += line_h + 6.0;
+
+    // Component sections based on entity type
+    if ent.entity_type == EntityType::Mesh {
+        r.draw_rect(Rect::new(glam::Vec2::new(x + 6.0, y), glam::Vec2::new(right - 6.0, y + 1.0)), border_color(), 0.0);
+        y += 4.0;
+        r.draw_text("M Mesh Renderer", glam::Vec2::new(pad, y), fs, cyan());
+        y += line_h;
+        r.draw_text(&format!("Shape: {}", ent.mesh_shape), glam::Vec2::new(pad, y), fs_small, text_normal());
+        y += line_h;
+        r.draw_text(&format!("Shadows: {} / {}", if ent.cast_shadows {"cast"} else {"no cast"}, if ent.receive_shadows {"recv"} else {"no recv"}), glam::Vec2::new(pad, y), fs_small, text_dim());
+        y += line_h + 4.0;
+    }
+
+    if ent.has_physics {
+        r.draw_rect(Rect::new(glam::Vec2::new(x + 6.0, y), glam::Vec2::new(right - 6.0, y + 1.0)), border_color(), 0.0);
+        y += 4.0;
+        r.draw_text("P Rigid Body", glam::Vec2::new(pad, y), fs, green());
+        y += line_h;
+        r.draw_text(&format!("Type: {}  Mass: {:.1}", ent.body_kind, ent.mass), glam::Vec2::new(pad, y), fs_small, text_normal());
+        y += line_h;
+        r.draw_text(&format!("Friction: {:.2}  Restitution: {:.2}", ent.friction, ent.restitution), glam::Vec2::new(pad, y), fs_small, text_dim());
+        y += line_h;
+        r.draw_text(&format!("Damping: lin={:.2} ang={:.2}", ent.linear_damping, ent.angular_damping), glam::Vec2::new(pad, y), fs_small, text_dim());
+        y += line_h + 4.0;
+    }
+
+    if ent.is_light {
+        r.draw_rect(Rect::new(glam::Vec2::new(x + 6.0, y), glam::Vec2::new(right - 6.0, y + 1.0)), border_color(), 0.0);
+        y += 4.0;
+        r.draw_text("L Light", glam::Vec2::new(pad, y), fs, yellow());
+        y += line_h;
+        r.draw_text(&format!("{} | Int: {:.1} | Range: {:.1}", ent.light_kind, ent.light_intensity, ent.light_range), glam::Vec2::new(pad, y), fs_small, text_normal());
+        y += line_h;
+        r.draw_text(&format!("Color: ({:.2},{:.2},{:.2})", ent.light_color[0], ent.light_color[1], ent.light_color[2]), glam::Vec2::new(pad, y), fs_small, text_dim());
+        y += line_h + 4.0;
+    }
+
+    if ent.is_camera {
+        r.draw_rect(Rect::new(glam::Vec2::new(x + 6.0, y), glam::Vec2::new(right - 6.0, y + 1.0)), border_color(), 0.0);
+        y += 4.0;
+        r.draw_text("C Camera", glam::Vec2::new(pad, y), fs, accent_bright());
+        y += line_h;
+        r.draw_text(&format!("{} | FOV: {:.0} | Near: {:.2} Far: {:.0}", ent.camera_projection, ent.camera_fov, ent.camera_near, ent.camera_far), glam::Vec2::new(pad, y), fs_small, text_normal());
+        y += line_h + 4.0;
+    }
+
+    if ent.is_audio {
+        r.draw_rect(Rect::new(glam::Vec2::new(x + 6.0, y), glam::Vec2::new(right - 6.0, y + 1.0)), border_color(), 0.0);
+        y += 4.0;
+        r.draw_text("A Audio Source", glam::Vec2::new(pad, y), fs, orange());
+        y += line_h;
+        r.draw_text(&format!("Vol: {:.2} | Pitch: {:.2} | Spatial: {}", ent.audio_volume, ent.audio_pitch, ent.audio_spatial), glam::Vec2::new(pad, y), fs_small, text_normal());
+        y += line_h + 4.0;
+    }
+}
+
+fn draw_bottom_panel(r: &mut UIGpuRenderer, state: &EditorState, sw: f32, top: f32, bottom: f32) {
+    let fs = 12.0;
+    let tab_h = 22.0;
+    let pad = 8.0;
+
+    // Tab bar
+    let tabs = ["Console", "Assets", "Profiler", "Animation"];
+    let tab_indices = [BottomTab::Console, BottomTab::ContentBrowser, BottomTab::Profiler, BottomTab::Animation];
+    let mut tx = pad;
+    for (i, tab) in tabs.iter().enumerate() {
+        let active = state.bottom_tab == tab_indices[i];
+        let col = if active { accent_bright() } else { text_dim() };
+        if active {
+            let tw = r.text_width(tab, fs) + 12.0;
+            r.draw_rect(Rect::new(glam::Vec2::new(tx - 4.0, top + 2.0), glam::Vec2::new(tx + tw - 4.0, top + tab_h)), bg_widget(), 3.0);
+        }
+        r.draw_text(tab, glam::Vec2::new(tx, top + (tab_h - fs) * 0.5), fs, col);
+        tx += r.text_width(tab, fs) + 20.0;
+    }
+
+    // Content area
+    let content_top = top + tab_h + 2.0;
+    r.draw_rect(Rect::new(glam::Vec2::new(0.0, content_top - 1.0), glam::Vec2::new(sw, content_top)), border_color(), 0.0);
+
+    match state.bottom_tab {
+        BottomTab::Console => draw_console(r, state, sw, content_top, bottom),
+        BottomTab::ContentBrowser => {
+            r.draw_text("Content Browser", glam::Vec2::new(pad, content_top + 4.0), fs, text_dim());
+            r.draw_text(&format!("Path: {}", state.asset_path), glam::Vec2::new(pad, content_top + 20.0), 11.0, text_muted());
+        }
+        BottomTab::Profiler => draw_profiler(r, state, sw, content_top, bottom),
+        BottomTab::Animation => {
+            r.draw_text("Animation Timeline", glam::Vec2::new(pad, content_top + 4.0), fs, text_dim());
+            r.draw_text(&format!("Time: {:.2}s / {:.1}s", state.anim_time, state.anim_duration), glam::Vec2::new(pad, content_top + 20.0), 11.0, text_muted());
+        }
+    }
+}
+
+fn draw_console(r: &mut UIGpuRenderer, state: &EditorState, sw: f32, top: f32, bottom: f32) {
+    let fs = 11.0;
+    let line_h = 15.0;
+    let pad = 8.0;
+    let max_lines = ((bottom - top - 20.0) / line_h) as usize;
+
+    let filtered: Vec<&LogEntry> = state.console_log.iter()
+        .filter(|e| state.console_filter_level.map_or(true, |f| e.level == f))
+        .collect();
+
+    let start = if filtered.len() > max_lines { filtered.len() - max_lines } else { 0 };
+    let mut y = top + 4.0;
+
+    for entry in &filtered[start..] {
+        if y + line_h > bottom - 16.0 { break; }
+
+        let prefix = format!("[{:.1}] {} ", entry.timestamp, entry.level.prefix());
+        r.draw_text(&prefix, glam::Vec2::new(pad, y), fs, text_muted());
+        let prefix_w = r.text_width(&prefix, fs);
+
+        let msg = if entry.count > 1 {
+            format!("{} (x{})", entry.text, entry.count)
+        } else {
+            entry.text.clone()
+        };
+        r.draw_text(&msg, glam::Vec2::new(pad + prefix_w, y), fs, entry.level.color());
+        y += line_h;
+    }
+
+    // Input prompt at bottom
+    let input_y = bottom - 16.0;
+    r.draw_rect(Rect::new(glam::Vec2::new(0.0, input_y - 1.0), glam::Vec2::new(sw, input_y)), border_color(), 0.0);
+    r.draw_text("> ", glam::Vec2::new(pad, input_y + 1.0), fs, accent());
+    r.draw_text(&state.console_input, glam::Vec2::new(pad + 14.0, input_y + 1.0), fs, text_normal());
+    // Blinking cursor
+    if state.frame_count % 60 < 30 {
+        let cursor_x = pad + 14.0 + r.text_width(&state.console_input, fs);
+        r.draw_text("_", glam::Vec2::new(cursor_x, input_y + 1.0), fs, text_bright());
+    }
+}
+
+fn draw_profiler(r: &mut UIGpuRenderer, state: &EditorState, sw: f32, top: f32, bottom: f32) {
+    let fs = 11.0;
+    let pad = 8.0;
+    let mut y = top + 4.0;
+
+    r.draw_text(&format!("FPS: {:.0}  Frame: {:.2}ms", state.smooth_fps, state.smooth_frame_time), glam::Vec2::new(pad, y), fs, text_bright());
+    y += 16.0;
+
+    let avg_ft = if !state.frame_times.is_empty() {
+        state.frame_times.iter().sum::<f64>() / state.frame_times.len() as f64
+    } else { 16.67 };
+    let max_ft = state.frame_times.iter().copied().fold(0.0f64, f64::max);
+    let min_ft = state.frame_times.iter().copied().fold(f64::MAX, f64::min);
+
+    r.draw_text(&format!("Avg: {:.2}ms  Min: {:.2}ms  Max: {:.2}ms", avg_ft, min_ft, max_ft), glam::Vec2::new(pad, y), fs, text_dim());
+    y += 16.0;
+
+    // Draw frame time bar graph
+    let graph_h = (bottom - y - 8.0).max(20.0);
+    let graph_w = sw - pad * 2.0;
+    let bar_count = state.frame_times.len();
+    if bar_count > 0 {
+        let bar_w = (graph_w / bar_count as f32).max(1.0);
+        for (i, &ft) in state.frame_times.iter().enumerate() {
+            let bar_h = ((ft / 33.33) * graph_h as f64).min(graph_h as f64) as f32;
+            let bx = pad + i as f32 * bar_w;
+            let by = y + graph_h - bar_h;
+            let bar_color = if ft < 16.67 { green() } else if ft < 33.33 { yellow() } else { red() };
+            r.draw_rect(Rect::new(glam::Vec2::new(bx, by), glam::Vec2::new(bx + (bar_w - 0.5).max(0.5), y + graph_h)), bar_color, 0.0);
+        }
+    }
+
+    // 60fps / 30fps lines
+    let y_60 = y + graph_h * (1.0 - (16.67 / 33.33) as f32);
+    let y_30 = y + graph_h * (1.0 - 1.0);
+    r.draw_line(glam::Vec2::new(pad, y_60), glam::Vec2::new(sw - pad, y_60), ca(72, 199, 142, 100), 1.0);
+    r.draw_line(glam::Vec2::new(pad, y_30), glam::Vec2::new(sw - pad, y_30), ca(245, 196, 80, 100), 1.0);
+}
+
+fn draw_viewport_overlay(r: &mut UIGpuRenderer, state: &EditorState, vx: f32, vy: f32, vw: f32, vh: f32) {
+    let fs = 11.0;
+
+    // Camera info (top-left of viewport)
+    let cam_text = format!("Yaw: {:.0}  Pitch: {:.0}  Dist: {:.1}", state.camera_yaw, state.camera_pitch, state.camera_dist);
+    r.draw_text(&cam_text, glam::Vec2::new(vx + 8.0, vy + 6.0), fs, text_dim());
+
+    // Gizmo mode (top-right of viewport)
+    let mode_text = format!("{} | {}", state.gizmo_mode.label(), if state.coord_space == CoordSpace::World { "World" } else { "Local" });
+    let mtw = r.text_width(&mode_text, fs);
+    r.draw_text(&mode_text, glam::Vec2::new(vx + vw - mtw - 8.0, vy + 6.0), fs, text_dim());
+
+    // Play state indicator (bottom-center)
+    if state.is_playing {
+        let play_text = if state.is_paused { "PAUSED" } else { "PLAYING" };
+        let play_col = if state.is_paused { yellow() } else { green() };
+        let pw = r.text_width(play_text, 14.0);
+        r.draw_text(play_text, glam::Vec2::new(vx + (vw - pw) * 0.5, vy + vh - 24.0), 14.0, play_col);
+    }
+
+    // Axis gizmo (bottom-left)
+    let ax_x = vx + 30.0;
+    let ax_y = vy + vh - 30.0;
+    let axis_len = 22.0;
+    r.draw_line(glam::Vec2::new(ax_x, ax_y), glam::Vec2::new(ax_x + axis_len, ax_y), x_color(), 2.0);
+    r.draw_text("X", glam::Vec2::new(ax_x + axis_len + 3.0, ax_y - 5.0), 10.0, x_color());
+    r.draw_line(glam::Vec2::new(ax_x, ax_y), glam::Vec2::new(ax_x, ax_y - axis_len), y_color(), 2.0);
+    r.draw_text("Y", glam::Vec2::new(ax_x - 5.0, ax_y - axis_len - 12.0), 10.0, y_color());
+    r.draw_line(glam::Vec2::new(ax_x, ax_y), glam::Vec2::new(ax_x - axis_len * 0.6, ax_y + axis_len * 0.5), z_color(), 2.0);
+    r.draw_text("Z", glam::Vec2::new(ax_x - axis_len * 0.6 - 12.0, ax_y + axis_len * 0.5 - 2.0), 10.0, z_color());
+
+    // Selected entity info
+    if let Some(idx) = state.selected_entity {
+        if idx < state.entities.len() {
+            let ent = &state.entities[idx];
+            let sel_text = format!("[{}] {} ({:.1},{:.1},{:.1})", ent.entity_type.icon_letter(), ent.name, ent.position[0], ent.position[1], ent.position[2]);
+            r.draw_text(&sel_text, glam::Vec2::new(vx + 8.0, vy + 20.0), fs, text_dim());
+        }
+    }
+
+    // Entity count pills at top
+    let entity_labels: Vec<(String, Color)> = vec![
+        (format!("{} entities", state.entities.len()), text_dim()),
+    ];
+    let mut pill_x = vx + vw - 8.0;
+    for (label, col) in entity_labels.iter().rev() {
+        let tw = r.text_width(label, 10.0);
+        let pw = tw + 12.0;
+        pill_x -= pw + 4.0;
+        r.draw_rect(Rect::new(glam::Vec2::new(pill_x, vy + 20.0), glam::Vec2::new(pill_x + pw, vy + 35.0)), ca(18, 18, 22, 200), 7.0);
+        r.draw_text(label, glam::Vec2::new(pill_x + 6.0, vy + 22.0), 10.0, *col);
+    }
+}
+
+fn draw_status_bar(r: &mut UIGpuRenderer, state: &EditorState, sw: f32, sh: f32, h: f32) {
+    let fs = 11.0;
+    let y = sh - h + (h - fs) * 0.5;
+    let pad = 8.0;
+
+    // Play state dot
+    let dot_color = if state.is_playing && !state.is_paused { green() }
+                    else if state.is_paused { yellow() }
+                    else { text_muted() };
+    r.draw_circle(glam::Vec2::new(pad + 4.0, sh - h * 0.5), 4.0, dot_color);
+
+    let status_text = if state.is_playing {
+        if state.is_paused { "Paused" } else { "Playing" }
+    } else { "Stopped" };
+    r.draw_text(status_text, glam::Vec2::new(pad + 14.0, y), fs, text_dim());
+
+    // Scene name
+    r.draw_text(&format!(" | {}", state.scene_name), glam::Vec2::new(pad + 14.0 + r.text_width(status_text, fs), y), fs, text_muted());
+
+    // Right side: FPS, entity count, body count
+    let ecs_count = state.engine.world().entity_count();
+    let body_count = state.engine.physics().body_count();
+    let active = state.engine.physics().active_body_count();
+
+    let right_text = format!("{:.0} FPS | {} entities | {} bodies ({} active)", state.smooth_fps, state.entities.len(), body_count, active);
+    let rtw = r.text_width(&right_text, fs);
+    r.draw_text(&right_text, glam::Vec2::new(sw - rtw - pad, y), fs, text_dim());
+}
+
+fn draw_fps_overlay(r: &mut UIGpuRenderer, state: &EditorState) {
+    let fs = 11.0;
+    let x = 6.0;
+    let y = 58.0;
+    let w = 140.0;
+    let h = 36.0;
+
+    r.draw_rect(Rect::new(glam::Vec2::new(x, y), glam::Vec2::new(x + w, y + h)), ca(18, 18, 22, 180), 4.0);
+    r.draw_text(&format!("FPS: {:.0}", state.smooth_fps), glam::Vec2::new(x + 6.0, y + 4.0), fs, green());
+    r.draw_text(&format!("Frame: {:.2}ms", state.smooth_frame_time), glam::Vec2::new(x + 6.0, y + 18.0), fs, text_dim());
+}
+
+fn draw_notification(r: &mut UIGpuRenderer, state: &EditorState, sw: f32, sh: f32) {
+    if let Some((ref msg, level, ref start)) = state.notification {
+        let age = start.elapsed().as_secs_f32();
+        if age > 3.5 { return; }
+
+        let alpha = if age > 2.5 { ((3.5 - age) / 1.0).clamp(0.0, 1.0) } else { 1.0 };
+        let a = (alpha * 255.0) as u8;
+
+        let tw = r.text_width(msg, 13.0);
+        let w = tw + 24.0;
+        let h = 32.0;
+        let x = sw - w - 16.0;
+        let y = sh - 52.0;
+
+        r.draw_rect(Rect::new(glam::Vec2::new(x, y), glam::Vec2::new(x + w, y + h)), ca(24, 24, 28, a), 4.0);
+        r.draw_rect_outline(Rect::new(glam::Vec2::new(x, y), glam::Vec2::new(x + w, y + h)), ca(38, 38, 44, a), 1.0, 4.0);
+
+        let col = level.color();
+        let text_col = Color::new(col.r, col.g, col.b, alpha);
+        r.draw_text(msg, glam::Vec2::new(x + 12.0, y + (h - 13.0) * 0.5), 13.0, text_col);
     }
 }
 
@@ -1562,1309 +1741,11 @@ fn make_depth(dev: &wgpu::Device, w: u32, h: u32) -> wgpu::TextureView {
 }
 
 // =============================================================================
-// Apply Genovo dark theme to egui -- UIStyle::dark() colors
-// =============================================================================
-
-fn apply_genovo_dark_theme(ctx: &egui::Context) {
-    let mut style = (*ctx.style()).clone();
-    style.visuals.dark_mode = true;
-    style.visuals.panel_fill = egui::Color32::from_rgb(24, 24, 28);
-    style.visuals.window_fill = egui::Color32::from_rgb(24, 24, 28);
-    style.visuals.extreme_bg_color = egui::Color32::from_rgb(18, 18, 22);
-    style.visuals.faint_bg_color = egui::Color32::from_rgb(32, 32, 38);
-    style.visuals.code_bg_color = egui::Color32::from_rgb(28, 28, 34);
-    style.visuals.striped = false;
-
-    // Window
-    style.visuals.window_shadow = egui::epaint::Shadow {
-        offset: [0, 2],
-        blur: 8,
-        spread: 0,
-        color: egui::Color32::from_black_alpha(100),
-    };
-    style.visuals.window_corner_radius = egui::CornerRadius::same(4);
-    style.visuals.window_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(38, 38, 44));
-
-    // Widgets -- inactive
-    style.visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(32, 32, 38);
-    style.visuals.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(38, 38, 44));
-    style.visuals.widgets.inactive.fg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(180, 180, 188));
-    style.visuals.widgets.inactive.corner_radius = egui::CornerRadius::same(3);
-    style.visuals.widgets.inactive.expansion = 0.0;
-
-    // Widgets -- hovered
-    style.visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(42, 42, 50);
-    style.visuals.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(56, 132, 244));
-    style.visuals.widgets.hovered.fg_stroke = egui::Stroke::new(1.5, egui::Color32::from_rgb(230, 230, 235));
-    style.visuals.widgets.hovered.corner_radius = egui::CornerRadius::same(3);
-    style.visuals.widgets.hovered.expansion = 1.0;
-
-    // Widgets -- active (pressed)
-    style.visuals.widgets.active.bg_fill = egui::Color32::from_rgb(56, 132, 244);
-    style.visuals.widgets.active.bg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(80, 156, 255));
-    style.visuals.widgets.active.fg_stroke = egui::Stroke::new(2.0, egui::Color32::from_rgb(230, 230, 235));
-    style.visuals.widgets.active.corner_radius = egui::CornerRadius::same(3);
-    style.visuals.widgets.active.expansion = 0.0;
-
-    // Widgets -- open (menus, combo boxes)
-    style.visuals.widgets.open.bg_fill = egui::Color32::from_rgb(30, 60, 110);
-    style.visuals.widgets.open.bg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(56, 132, 244));
-    style.visuals.widgets.open.fg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(230, 230, 235));
-    style.visuals.widgets.open.corner_radius = egui::CornerRadius::same(3);
-    style.visuals.widgets.open.expansion = 0.0;
-
-    // Widgets -- non-interactive
-    style.visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(24, 24, 28);
-    style.visuals.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(38, 38, 44));
-    style.visuals.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(180, 180, 188));
-    style.visuals.widgets.noninteractive.corner_radius = egui::CornerRadius::same(3);
-    style.visuals.widgets.noninteractive.expansion = 0.0;
-
-    // Selection
-    style.visuals.selection.bg_fill = egui::Color32::from_rgba_premultiplied(56, 132, 244, 80);
-    style.visuals.selection.stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(56, 132, 244));
-
-    // Hyperlinks
-    style.visuals.hyperlink_color = ACCENT_BRIGHT;
-
-    // Separator
-    style.visuals.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(38, 38, 44));
-
-    // Override text color
-    style.visuals.override_text_color = Some(egui::Color32::from_rgb(180, 180, 188));
-
-    // Spacing
-    style.spacing.item_spacing = egui::vec2(6.0, 4.0);
-    style.spacing.window_margin = egui::Margin::same(8);
-    style.spacing.button_padding = egui::vec2(6.0, 3.0);
-    style.spacing.indent = 16.0;
-    style.spacing.slider_width = 120.0;
-    style.spacing.text_edit_width = 120.0;
-
-    ctx.set_style(style);
-}
-
-// =============================================================================
-// Draw editor UI using egui as the rendering backend
-// =============================================================================
-
-fn draw_editor_ui(ctx: &egui::Context, state: &mut EditorState) {
-    // --- Menu Bar (top) ---
-    draw_menu_bar(ctx, state);
-
-    // --- Toolbar ---
-    if state.panels.toolbar {
-        draw_toolbar(ctx, state);
-    }
-
-    // --- Scene Hierarchy (left panel) ---
-    if state.panels.hierarchy {
-        draw_hierarchy(ctx, state);
-    }
-
-    // --- Inspector (right panel) ---
-    if state.panels.inspector {
-        draw_inspector(ctx, state);
-    }
-
-    // --- Bottom Panel (console/assets/profiler/animation tabs) ---
-    if state.panels.bottom {
-        draw_bottom_panel(ctx, state);
-    }
-
-    // --- Central viewport area ---
-    draw_viewport(ctx, state);
-
-    // --- Status Bar (bottom) ---
-    if state.panels.status_bar {
-        draw_status_bar(ctx, state);
-    }
-
-    // --- FPS overlay ---
-    if state.stats_visible {
-        draw_fps_overlay(ctx, state);
-    }
-
-    // --- Notification toast ---
-    draw_notification(ctx, state);
-
-    // --- Dialogs ---
-    draw_about_dialog(ctx, state);
-    draw_shortcuts_dialog(ctx, state);
-}
-
-// =============================================================================
-// Menu Bar (egui)
-// =============================================================================
-
-fn draw_menu_bar(ctx: &egui::Context, state: &mut EditorState) {
-    egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
-        egui::menu::bar(ui, |ui| {
-            ui.colored_label(ACCENT, "Genovo Studio");
-            ui.separator();
-
-            // File menu
-            ui.menu_button("File", |ui| {
-                if ui.button("New Scene       Ctrl+N").clicked() { state.new_scene(); ui.close_menu(); }
-                if ui.button("Open Scene...").clicked() { state.load_scene_from_file("scene.json"); ui.close_menu(); }
-                if ui.button("Save            Ctrl+S").clicked() { state.save_scene(); ui.close_menu(); }
-                if ui.button("Save As...").clicked() { state.save_scene_to_file("scene.json"); ui.close_menu(); }
-                ui.separator();
-                if ui.button("Import Asset...").clicked() { state.log(LogLevel::System, "Import asset (placeholder)"); ui.close_menu(); }
-                if ui.button("Export...").clicked() { state.log(LogLevel::System, "Export (placeholder)"); ui.close_menu(); }
-                ui.separator();
-                if ui.button("Exit").clicked() { std::process::exit(0); }
-            });
-
-            // Edit menu
-            ui.menu_button("Edit", |ui| {
-                if ui.button("Undo        Ctrl+Z").clicked() { state.perform_undo(); ui.close_menu(); }
-                if ui.button("Redo        Ctrl+Y").clicked() { state.perform_redo(); ui.close_menu(); }
-                ui.separator();
-                if ui.button("Duplicate   Ctrl+D").clicked() { state.duplicate_selected(); ui.close_menu(); }
-                if ui.button("Delete      Del").clicked() { state.delete_selected(); ui.close_menu(); }
-                ui.separator();
-                if ui.button("Select All").clicked() { state.select_all(); ui.close_menu(); }
-                if ui.button("Deselect All").clicked() { state.selected_entity = None; ui.close_menu(); }
-                ui.separator();
-                if ui.button("Preferences...").clicked() { state.show_preferences = true; ui.close_menu(); }
-            });
-
-            // View menu
-            ui.menu_button("View", |ui| {
-                if ui.button("Toggle Hierarchy").clicked() { state.panels.hierarchy = !state.panels.hierarchy; ui.close_menu(); }
-                if ui.button("Toggle Inspector").clicked() { state.panels.inspector = !state.panels.inspector; ui.close_menu(); }
-                if ui.button("Toggle Bottom Panel").clicked() { state.panels.bottom = !state.panels.bottom; ui.close_menu(); }
-                if ui.button("Toggle Toolbar").clicked() { state.panels.toolbar = !state.panels.toolbar; ui.close_menu(); }
-                if ui.button("Toggle Status Bar").clicked() { state.panels.status_bar = !state.panels.status_bar; ui.close_menu(); }
-                ui.separator();
-                if ui.button("Toggle Grid").clicked() { state.grid_visible = !state.grid_visible; ui.close_menu(); }
-                if ui.button("Toggle Wireframe").clicked() { state.wireframe_mode = !state.wireframe_mode; ui.close_menu(); }
-                if ui.button("Toggle Stats").clicked() { state.stats_visible = !state.stats_visible; ui.close_menu(); }
-                ui.separator();
-                if ui.button("Focus Selected  F").clicked() { state.focus_selected(); ui.close_menu(); }
-                if ui.button("Frame All").clicked() { state.frame_all(); ui.close_menu(); }
-            });
-
-            // Create menu
-            ui.menu_button("Create", |ui| {
-                if ui.button("Empty Entity").clicked() { let i = state.spawn_entity("Empty", EntityType::Empty); state.selected_entity = Some(i); ui.close_menu(); }
-                ui.separator();
-                ui.label("Meshes");
-                if ui.button("  Cube").clicked() { let i = state.spawn_mesh(MeshShape::Cube); state.selected_entity = Some(i); ui.close_menu(); }
-                if ui.button("  Sphere").clicked() { let i = state.spawn_mesh(MeshShape::Sphere); state.selected_entity = Some(i); ui.close_menu(); }
-                if ui.button("  Cylinder").clicked() { let i = state.spawn_mesh(MeshShape::Cylinder); state.selected_entity = Some(i); ui.close_menu(); }
-                if ui.button("  Capsule").clicked() { let i = state.spawn_mesh(MeshShape::Capsule); state.selected_entity = Some(i); ui.close_menu(); }
-                if ui.button("  Cone").clicked() { let i = state.spawn_mesh(MeshShape::Cone); state.selected_entity = Some(i); ui.close_menu(); }
-                if ui.button("  Plane").clicked() { let i = state.spawn_mesh(MeshShape::Plane); state.selected_entity = Some(i); ui.close_menu(); }
-                ui.separator();
-                ui.label("Lights");
-                if ui.button("  Directional Light").clicked() { let i = state.spawn_light(LightKind::Directional); state.selected_entity = Some(i); ui.close_menu(); }
-                if ui.button("  Point Light").clicked() { let i = state.spawn_light(LightKind::Point); state.selected_entity = Some(i); ui.close_menu(); }
-                if ui.button("  Spot Light").clicked() { let i = state.spawn_light(LightKind::Spot); state.selected_entity = Some(i); ui.close_menu(); }
-                ui.separator();
-                if ui.button("Camera").clicked() { let i = state.spawn_entity("Camera", EntityType::Camera); state.selected_entity = Some(i); ui.close_menu(); }
-                if ui.button("Particle System").clicked() { let i = state.spawn_entity("Particle System", EntityType::ParticleSystem); state.selected_entity = Some(i); ui.close_menu(); }
-            });
-
-            // Tools menu
-            ui.menu_button("Tools", |ui| {
-                if ui.button("Terrain Editor").clicked() { state.execute_console_command("terrain gen"); ui.close_menu(); }
-                if ui.button("Generate Dungeon").clicked() { state.execute_console_command("dungeon gen"); ui.close_menu(); }
-                ui.separator();
-                if ui.button("Profiler").clicked() { state.bottom_tab = BottomTab::Profiler; state.bottom_tab_idx = 2; ui.close_menu(); }
-                if ui.button("Script Console").clicked() { state.bottom_tab = BottomTab::Console; state.bottom_tab_idx = 0; ui.close_menu(); }
-            });
-
-            // Help menu
-            ui.menu_button("Help", |ui| {
-                if ui.button("About Genovo Studio").clicked() { state.show_about = !state.show_about; ui.close_menu(); }
-                if ui.button("Keyboard Shortcuts").clicked() { state.show_shortcuts = !state.show_shortcuts; ui.close_menu(); }
-                if ui.button("Check for Updates").clicked() { state.log(LogLevel::System, "Genovo Studio v1.0 is up to date"); ui.close_menu(); }
-            });
-        });
-    });
-}
-
-// =============================================================================
-// Toolbar (egui)
-// =============================================================================
-
-fn draw_toolbar(ctx: &egui::Context, state: &mut EditorState) {
-    egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
-        ui.horizontal(|ui| {
-            // Gizmo mode buttons
-            for mode in [GizmoMode::Select, GizmoMode::Translate, GizmoMode::Rotate, GizmoMode::Scale] {
-                let selected = state.gizmo_mode == mode;
-                let label = format!("{} {}", mode.icon(), mode.short_label());
-                let btn = egui::Button::new(egui::RichText::new(&label).color(if selected { ACCENT_BRIGHT } else { TEXT_NORMAL }))
-                    .fill(if selected { ACCENT_BG } else { BG_WIDGET });
-                if ui.add(btn).on_hover_text(mode.label()).clicked() {
-                    state.gizmo_mode = mode;
-                }
-            }
-
-            ui.separator();
-
-            // Play / Pause / Stop / Step
-            let playing = state.is_playing && !state.is_paused;
-            let play_label = if playing { "||  Pause" } else { "|>  Play" };
-            let play_color = if playing { GREEN } else { TEXT_NORMAL };
-            if ui.add(egui::Button::new(egui::RichText::new(play_label).color(play_color))
-                .fill(if playing { GREEN_DIM } else { BG_WIDGET }))
-                .on_hover_text("Play/Pause (Space)").clicked() {
-                state.toggle_play();
-            }
-            if ui.add(egui::Button::new(egui::RichText::new("[]  Stop").color(RED))
-                .fill(BG_WIDGET))
-                .on_hover_text("Stop").clicked() {
-                state.stop_play();
-            }
-            if ui.add(egui::Button::new(egui::RichText::new("|>|  Step").color(TEXT_DIM))
-                .fill(BG_WIDGET))
-                .on_hover_text("Step (1 frame)").clicked() {
-                state.step_physics();
-            }
-
-            ui.separator();
-
-            // Coord space toggle
-            let space_label = if state.coord_space == CoordSpace::Local { "Local" } else { "World" };
-            if ui.button(space_label).on_hover_text("Toggle local/world space").clicked() {
-                state.coord_space = if state.coord_space == CoordSpace::Local { CoordSpace::World } else { CoordSpace::Local };
-            }
-
-            // Pivot toggle
-            let pivot_label = if state.pivot_mode == PivotMode::Center { "Center" } else { "Pivot" };
-            if ui.button(pivot_label).on_hover_text("Toggle pivot mode").clicked() {
-                state.pivot_mode = if state.pivot_mode == PivotMode::Center { PivotMode::Pivot } else { PivotMode::Center };
-            }
-
-            ui.separator();
-
-            // Snap toggle
-            let snap_btn = egui::Button::new(egui::RichText::new("Snap").color(if state.snap_enabled { ACCENT_BRIGHT } else { TEXT_DIM }))
-                .fill(if state.snap_enabled { ACCENT_BG } else { BG_WIDGET });
-            if ui.add(snap_btn).on_hover_text("Toggle snap").clicked() {
-                state.snap_enabled = !state.snap_enabled;
-            }
-
-            // Grid toggle
-            let grid_btn = egui::Button::new(egui::RichText::new("Grid").color(if state.grid_visible { ACCENT_BRIGHT } else { TEXT_DIM }))
-                .fill(if state.grid_visible { ACCENT_BG } else { BG_WIDGET });
-            if ui.add(grid_btn).on_hover_text("Toggle grid").clicked() {
-                state.grid_visible = !state.grid_visible;
-            }
-
-            // Stats toggle
-            let stats_btn = egui::Button::new(egui::RichText::new("Stats").color(if state.stats_visible { ACCENT_BRIGHT } else { TEXT_DIM }))
-                .fill(if state.stats_visible { ACCENT_BG } else { BG_WIDGET });
-            if ui.add(stats_btn).on_hover_text("Toggle stats overlay").clicked() {
-                state.stats_visible = !state.stats_visible;
-            }
-
-            ui.separator();
-            ui.colored_label(TEXT_DIM, format!("Speed: {:.1}x", state.sim_speed));
-        });
-    });
-}
-
-// =============================================================================
-// Scene Hierarchy (egui left panel)
-// =============================================================================
-
-fn draw_hierarchy(ctx: &egui::Context, state: &mut EditorState) {
-    egui::SidePanel::left("hierarchy")
-        .default_width(state.hierarchy_width)
-        .min_width(150.0)
-        .max_width(400.0)
-        .resizable(true)
-        .show(ctx, |ui| {
-            ui.heading("Scene Outliner");
-            ui.separator();
-
-            // Search bar
-            ui.horizontal(|ui| {
-                ui.label("Search:");
-                ui.text_edit_singleline(&mut state.entity_filter);
-            });
-
-            // Entity count
-            ui.colored_label(TEXT_MUTED, format!("{} entities", state.entities.len()));
-            ui.separator();
-
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                if state.entities.is_empty() {
-                    ui.colored_label(TEXT_MUTED, "No entities in scene");
-                    ui.colored_label(TEXT_MUTED, "Use Create menu to add");
-                } else {
-                    let filter_lower = state.entity_filter.to_lowercase();
-
-                    // Collect data to avoid borrow issues
-                    let entity_data: Vec<(usize, String, EntityType, bool)> = state.entities.iter().enumerate()
-                        .filter(|(_, ent)| {
-                            filter_lower.is_empty() || ent.name.to_lowercase().contains(&filter_lower)
-                        })
-                        .map(|(i, ent)| (i, ent.name.clone(), ent.entity_type, state.selected_entity == Some(i)))
-                        .collect();
-
-                    let mut clicked_entity: Option<usize> = None;
-
-                    for (i, name, etype, selected) in &entity_data {
-                        let dot_color = etype.dot_color();
-                        let text_color = if *selected { TEXT_BRIGHT } else { TEXT_NORMAL };
-                        let _bg = if *selected { ACCENT_BG } else { egui::Color32::TRANSPARENT };
-
-                        let response = ui.horizontal(|ui| {
-                            // Colored dot for entity type
-                            let (rect, _) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
-                            ui.painter().circle_filled(rect.center(), 4.0, dot_color);
-                            // Entity name
-                            let label = egui::RichText::new(format!(" {} [{}]", name, etype.icon_letter()))
-                                .color(text_color);
-                            let btn = ui.selectable_label(*selected, label);
-                            if btn.clicked() {
-                                return Some(*i);
-                            }
-                            None
-                        });
-
-                        if let Some(idx) = response.inner {
-                            clicked_entity = Some(idx);
-                        }
-                    }
-
-                    if let Some(idx) = clicked_entity {
-                        state.selected_entity = Some(idx);
-                    }
-                }
-            });
-        });
-}
-
-// =============================================================================
-// Inspector (egui right panel)
-// =============================================================================
-
-fn draw_inspector(ctx: &egui::Context, state: &mut EditorState) {
-    egui::SidePanel::right("inspector")
-        .default_width(state.inspector_width)
-        .min_width(200.0)
-        .max_width(500.0)
-        .resizable(true)
-        .show(ctx, |ui| {
-            ui.heading("Inspector");
-            ui.separator();
-
-            let sel = state.selected_entity;
-            if sel.is_none() || sel.unwrap() >= state.entities.len() {
-                ui.add_space(20.0);
-                ui.colored_label(TEXT_MUTED, "No entity selected");
-                ui.colored_label(TEXT_MUTED, "Select an entity in the outliner");
-                return;
-            }
-            let idx = sel.unwrap();
-
-            // Entity identity
-            let etype = state.entities[idx].entity_type;
-            let eid = state.entities[idx].entity;
-            ui.heading(&state.entities[idx].name.clone());
-
-            ui.horizontal(|ui| {
-                ui.colored_label(etype.icon_color(), format!(" {} ", etype));
-                ui.colored_label(TEXT_MUTED, format!("Entity {}v{}", eid.id, eid.generation));
-            });
-
-            // Entity name edit
-            ui.horizontal(|ui| {
-                ui.label("Name:");
-                let mut name = state.entities[idx].name.clone();
-                if ui.text_edit_singleline(&mut name).changed() {
-                    state.entities[idx].name = name;
-                    state.scene_modified = true;
-                }
-            });
-
-            // Active toggle
-            let mut active = state.entities[idx].active;
-            if ui.checkbox(&mut active, "Active").changed() {
-                state.entities[idx].active = active;
-            }
-
-            ui.separator();
-
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                // Transform section
-                let mut pos_changed = false;
-                egui::CollapsingHeader::new(egui::RichText::new("+ Transform").color(TEXT_BRIGHT))
-                    .default_open(state.inspector_sections.transform_open)
-                    .show(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            ui.colored_label(X_COLOR, "X");
-                            if ui.add(egui::DragValue::new(&mut state.entities[idx].position[0]).speed(0.1)).changed() { pos_changed = true; }
-                            ui.colored_label(Y_COLOR, "Y");
-                            if ui.add(egui::DragValue::new(&mut state.entities[idx].position[1]).speed(0.1)).changed() { pos_changed = true; }
-                            ui.colored_label(Z_COLOR, "Z");
-                            if ui.add(egui::DragValue::new(&mut state.entities[idx].position[2]).speed(0.1)).changed() { pos_changed = true; }
-                        });
-                        ui.horizontal(|ui| {
-                            ui.label("Rotation");
-                            ui.add(egui::DragValue::new(&mut state.entities[idx].rotation[0]).speed(0.5).suffix("d"));
-                            ui.add(egui::DragValue::new(&mut state.entities[idx].rotation[1]).speed(0.5).suffix("d"));
-                            ui.add(egui::DragValue::new(&mut state.entities[idx].rotation[2]).speed(0.5).suffix("d"));
-                        });
-                        ui.horizontal(|ui| {
-                            ui.label("Scale   ");
-                            ui.add(egui::DragValue::new(&mut state.entities[idx].scale[0]).speed(0.01).range(0.001..=1000.0));
-                            ui.add(egui::DragValue::new(&mut state.entities[idx].scale[1]).speed(0.01).range(0.001..=1000.0));
-                            ui.add(egui::DragValue::new(&mut state.entities[idx].scale[2]).speed(0.01).range(0.001..=1000.0));
-                        });
-                    });
-
-                if pos_changed {
-                    state.sync_entity_to_physics(idx);
-                    state.scene_modified = true;
-                }
-
-                // Mesh Renderer section
-                if etype == EntityType::Mesh {
-                    egui::CollapsingHeader::new(egui::RichText::new("M Mesh Renderer").color(CYAN))
-                        .default_open(state.inspector_sections.mesh_open)
-                        .show(ui, |ui| {
-                            let shape_names = ["Cube", "Sphere", "Cylinder", "Capsule", "Cone", "Plane"];
-                            let mut shape_idx = match state.entities[idx].mesh_shape {
-                                MeshShape::Cube => 0, MeshShape::Sphere => 1, MeshShape::Cylinder => 2,
-                                MeshShape::Capsule => 3, MeshShape::Cone => 4, MeshShape::Plane => 5,
-                            };
-                            ui.horizontal(|ui| {
-                                ui.label("Mesh:");
-                                egui::ComboBox::from_id_source("mesh_shape")
-                                    .selected_text(shape_names[shape_idx])
-                                    .show_ui(ui, |ui| {
-                                        for (i, name) in shape_names.iter().enumerate() {
-                                            if ui.selectable_value(&mut shape_idx, i, *name).changed() {
-                                                state.entities[idx].mesh_shape = match i {
-                                                    0 => MeshShape::Cube, 1 => MeshShape::Sphere, 2 => MeshShape::Cylinder,
-                                                    3 => MeshShape::Capsule, 4 => MeshShape::Cone, 5 => MeshShape::Plane,
-                                                    _ => MeshShape::Cube,
-                                                };
-                                                state.scene_modified = true;
-                                            }
-                                        }
-                                    });
-                            });
-                            ui.checkbox(&mut state.entities[idx].cast_shadows, "Cast Shadows");
-                            ui.checkbox(&mut state.entities[idx].receive_shadows, "Receive Shadows");
-                        });
-                }
-
-                // Physics section
-                if state.entities[idx].has_physics {
-                    egui::CollapsingHeader::new(egui::RichText::new("P Rigid Body").color(GREEN))
-                        .default_open(state.inspector_sections.physics_open)
-                        .show(ui, |ui| {
-                            let body_names = ["Dynamic", "Static", "Kinematic"];
-                            let mut bk_idx = match state.entities[idx].body_kind {
-                                BodyKind::Dynamic => 0, BodyKind::Static => 1, BodyKind::Kinematic => 2,
-                            };
-                            ui.horizontal(|ui| {
-                                ui.label("Body Type:");
-                                egui::ComboBox::from_id_source("body_type")
-                                    .selected_text(body_names[bk_idx])
-                                    .show_ui(ui, |ui| {
-                                        for (i, name) in body_names.iter().enumerate() {
-                                            if ui.selectable_value(&mut bk_idx, i, *name).changed() {
-                                                state.entities[idx].body_kind = match i {
-                                                    0 => BodyKind::Dynamic, 1 => BodyKind::Static, 2 => BodyKind::Kinematic,
-                                                    _ => BodyKind::Dynamic,
-                                                };
-                                            }
-                                        }
-                                    });
-                            });
-                            ui.add(egui::Slider::new(&mut state.entities[idx].mass, 0.01..=1000.0).text("Mass").logarithmic(true));
-                            ui.add(egui::Slider::new(&mut state.entities[idx].friction, 0.0..=1.0).text("Friction"));
-                            ui.add(egui::Slider::new(&mut state.entities[idx].restitution, 0.0..=1.0).text("Restitution"));
-                            ui.add(egui::Slider::new(&mut state.entities[idx].linear_damping, 0.0..=10.0).text("Lin Damping"));
-                            ui.add(egui::Slider::new(&mut state.entities[idx].angular_damping, 0.0..=10.0).text("Ang Damping"));
-                            ui.add(egui::DragValue::new(&mut state.entities[idx].gravity_scale).speed(0.1).prefix("Gravity Scale: "));
-
-                            // Velocity readout
-                            if let Some(handle) = state.entities[idx].physics_handle {
-                                if let Ok(vel) = state.engine.physics().get_linear_velocity(handle) {
-                                    let speed = (vel.x * vel.x + vel.y * vel.y + vel.z * vel.z).sqrt();
-                                    ui.colored_label(TEXT_MUTED, format!("Vel: ({:.2}, {:.2}, {:.2})", vel.x, vel.y, vel.z));
-                                    ui.colored_label(TEXT_MUTED, format!("Speed: {:.3} m/s", speed));
-                                }
-                            }
-                        });
-
-                    // Collider
-                    egui::CollapsingHeader::new(egui::RichText::new("C Collider").color(YELLOW))
-                        .default_open(state.inspector_sections.collider_open)
-                        .show(ui, |ui| {
-                            let col_names = ["Box", "Sphere", "Capsule"];
-                            let mut cs_idx = match state.entities[idx].collider_shape {
-                                ColliderShape::Box => 0, ColliderShape::Sphere => 1, ColliderShape::Capsule => 2,
-                            };
-                            ui.horizontal(|ui| {
-                                ui.label("Shape:");
-                                egui::ComboBox::from_id_source("col_shape")
-                                    .selected_text(col_names[cs_idx])
-                                    .show_ui(ui, |ui| {
-                                        for (i, name) in col_names.iter().enumerate() {
-                                            if ui.selectable_value(&mut cs_idx, i, *name).changed() {
-                                                state.entities[idx].collider_shape = match i {
-                                                    0 => ColliderShape::Box, 1 => ColliderShape::Sphere, 2 => ColliderShape::Capsule,
-                                                    _ => ColliderShape::Box,
-                                                };
-                                            }
-                                        }
-                                    });
-                            });
-                            ui.checkbox(&mut state.entities[idx].is_trigger, "Is Trigger");
-                        });
-                }
-
-                // Light section
-                if state.entities[idx].is_light {
-                    egui::CollapsingHeader::new(egui::RichText::new("L Light").color(YELLOW))
-                        .default_open(state.inspector_sections.light_open)
-                        .show(ui, |ui| {
-                            let lk_names = ["Directional", "Point", "Spot"];
-                            let mut lk_idx = match state.entities[idx].light_kind {
-                                LightKind::Directional => 0, LightKind::Point => 1, LightKind::Spot => 2,
-                            };
-                            ui.horizontal(|ui| {
-                                ui.label("Type:");
-                                egui::ComboBox::from_id_source("light_type")
-                                    .selected_text(lk_names[lk_idx])
-                                    .show_ui(ui, |ui| {
-                                        for (i, name) in lk_names.iter().enumerate() {
-                                            if ui.selectable_value(&mut lk_idx, i, *name).changed() {
-                                                state.entities[idx].light_kind = match i {
-                                                    0 => LightKind::Directional, 1 => LightKind::Point, 2 => LightKind::Spot,
-                                                    _ => LightKind::Point,
-                                                };
-                                            }
-                                        }
-                                    });
-                            });
-                            ui.add(egui::Slider::new(&mut state.entities[idx].light_intensity, 0.0..=100.0).text("Intensity"));
-                            ui.add(egui::Slider::new(&mut state.entities[idx].light_range, 0.1..=1000.0).text("Range").logarithmic(true));
-                            if state.entities[idx].light_kind == LightKind::Spot {
-                                ui.add(egui::Slider::new(&mut state.entities[idx].light_spot_angle, 1.0..=179.0).text("Spot Angle"));
-                            }
-                            ui.checkbox(&mut state.entities[idx].light_shadows, "Cast Shadows");
-                        });
-                }
-
-                // Camera section
-                if state.entities[idx].is_camera {
-                    egui::CollapsingHeader::new(egui::RichText::new("C Camera").color(ACCENT_BRIGHT))
-                        .default_open(state.inspector_sections.camera_open)
-                        .show(ui, |ui| {
-                            let proj_names = ["Perspective", "Orthographic"];
-                            let mut proj_idx = match state.entities[idx].camera_projection {
-                                CameraProjection::Perspective => 0, CameraProjection::Orthographic => 1,
-                            };
-                            ui.horizontal(|ui| {
-                                ui.label("Projection:");
-                                egui::ComboBox::from_id_source("cam_proj")
-                                    .selected_text(proj_names[proj_idx])
-                                    .show_ui(ui, |ui| {
-                                        for (i, name) in proj_names.iter().enumerate() {
-                                            if ui.selectable_value(&mut proj_idx, i, *name).changed() {
-                                                state.entities[idx].camera_projection = match i {
-                                                    0 => CameraProjection::Perspective, 1 => CameraProjection::Orthographic,
-                                                    _ => CameraProjection::Perspective,
-                                                };
-                                            }
-                                        }
-                                    });
-                            });
-                            ui.add(egui::Slider::new(&mut state.entities[idx].camera_fov, 10.0..=170.0).text("FOV"));
-                            ui.add(egui::DragValue::new(&mut state.entities[idx].camera_near).speed(0.01).prefix("Near: "));
-                            ui.add(egui::DragValue::new(&mut state.entities[idx].camera_far).speed(10.0).prefix("Far: "));
-                        });
-                }
-
-                // Audio section
-                if state.entities[idx].is_audio {
-                    egui::CollapsingHeader::new(egui::RichText::new("A Audio Source").color(ORANGE))
-                        .default_open(state.inspector_sections.audio_open)
-                        .show(ui, |ui| {
-                            ui.add(egui::Slider::new(&mut state.entities[idx].audio_volume, 0.0..=1.0).text("Volume"));
-                            ui.add(egui::DragValue::new(&mut state.entities[idx].audio_pitch).speed(0.01).prefix("Pitch: "));
-                            ui.checkbox(&mut state.entities[idx].audio_spatial, "Spatial");
-                            if state.entities[idx].audio_spatial {
-                                ui.add(egui::DragValue::new(&mut state.entities[idx].audio_min_dist).speed(0.1).prefix("Min Dist: "));
-                                ui.add(egui::DragValue::new(&mut state.entities[idx].audio_max_dist).speed(1.0).prefix("Max Dist: "));
-                            }
-                        });
-                }
-
-                // Script section
-                if state.entities[idx].has_script {
-                    egui::CollapsingHeader::new(egui::RichText::new("S Script").color(MAGENTA))
-                        .default_open(state.inspector_sections.script_open)
-                        .show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                ui.label("File:");
-                                ui.text_edit_singleline(&mut state.entities[idx].script_file);
-                            });
-                        });
-                }
-
-                // Add component button
-                ui.separator();
-                if ui.add(egui::Button::new(egui::RichText::new("+ Add Component").color(ACCENT))
-                    .fill(BG_WIDGET)).clicked() {
-                    // Toggle physics on as a simple example
-                    if !state.entities[idx].has_physics {
-                        let ent = &state.entities[idx];
-                        let desc = physics::RigidBodyDesc {
-                            body_type: physics::BodyType::Dynamic,
-                            position: Vec3::new(ent.position[0], ent.position[1], ent.position[2]),
-                            mass: ent.mass,
-                            ..Default::default()
-                        };
-                        if let Ok(handle) = state.engine.physics_mut().add_body(&desc) {
-                            let _ = state.engine.physics_mut().add_collider(
-                                handle,
-                                &physics::ColliderDesc {
-                                    shape: physics::CollisionShape::Sphere { radius: 0.5 },
-                                    ..Default::default()
-                                },
-                            );
-                            let ent = &mut state.entities[idx];
-                            ent.has_physics = true;
-                            ent.physics_handle = Some(handle);
-                        }
-                        state.notify("Added Rigidbody + Collider", LogLevel::System);
-                    }
-                }
-            });
-        });
-}
-
-// =============================================================================
-// Bottom Panel (console/assets/profiler/animation)
-// =============================================================================
-
-fn draw_bottom_panel(ctx: &egui::Context, state: &mut EditorState) {
-    egui::TopBottomPanel::bottom("bottom_panel")
-        .default_height(state.bottom_height)
-        .min_height(100.0)
-        .max_height(500.0)
-        .resizable(true)
-        .show(ctx, |ui| {
-            // Tab bar
-            ui.horizontal(|ui| {
-                let tabs = ["Console", "Content", "Profiler", "Animation"];
-                for (i, tab) in tabs.iter().enumerate() {
-                    let selected = state.bottom_tab_idx == i;
-                    let color = if selected { ACCENT_BRIGHT } else { TEXT_DIM };
-                    let btn = egui::Button::new(egui::RichText::new(*tab).color(color))
-                        .fill(if selected { ACCENT_BG } else { BG_WIDGET });
-                    if ui.add(btn).clicked() {
-                        state.bottom_tab_idx = i;
-                        state.bottom_tab = match i {
-                            0 => BottomTab::Console,
-                            1 => BottomTab::ContentBrowser,
-                            2 => BottomTab::Profiler,
-                            3 => BottomTab::Animation,
-                            _ => BottomTab::Console,
-                        };
-                    }
-                }
-            });
-            ui.separator();
-
-            match state.bottom_tab {
-                BottomTab::Console => draw_console_tab(ui, state),
-                BottomTab::ContentBrowser => draw_content_browser_tab(ui, state),
-                BottomTab::Profiler => draw_profiler_tab(ui, state),
-                BottomTab::Animation => draw_animation_tab(ui, state),
-            }
-        });
-}
-
-// =============================================================================
-// Console Tab (egui)
-// =============================================================================
-
-fn draw_console_tab(ui: &mut egui::Ui, state: &mut EditorState) {
-    // Filter buttons
-    ui.horizontal(|ui| {
-        ui.colored_label(TEXT_MUTED, "Filter:");
-        if ui.button("All").clicked() { state.console_filter_level = None; }
-        if ui.add(egui::Button::new(egui::RichText::new("Info").color(TEXT_NORMAL))).clicked() { state.console_filter_level = Some(LogLevel::Info); }
-        if ui.add(egui::Button::new(egui::RichText::new("Warn").color(YELLOW))).clicked() { state.console_filter_level = Some(LogLevel::Warn); }
-        if ui.add(egui::Button::new(egui::RichText::new("Err").color(RED))).clicked() { state.console_filter_level = Some(LogLevel::Error); }
-        if ui.add(egui::Button::new(egui::RichText::new("Sys").color(ACCENT_BRIGHT))).clicked() { state.console_filter_level = Some(LogLevel::System); }
-        if ui.button("Clear").clicked() { state.console_log.clear(); }
-    });
-
-    ui.separator();
-
-    // Log entries
-    let available_h = ui.available_height() - 30.0;
-    egui::ScrollArea::vertical().max_height(available_h).stick_to_bottom(true).show(ui, |ui| {
-        let filtered: Vec<&LogEntry> = state.console_log.iter()
-            .filter(|e| {
-                match state.console_filter_level {
-                    Some(f) => e.level == f,
-                    None => true,
-                }
-            })
-            .collect();
-
-        for entry in &filtered {
-            let timestamp = format!("{:>7.1}", entry.timestamp);
-            let prefix = entry.level.prefix();
-            let color = entry.level.color();
-            let count_str = if entry.count > 1 { format!(" (x{})", entry.count) } else { String::new() };
-            let line = format!("{} {} {}{}", timestamp, prefix, entry.text, count_str);
-            ui.colored_label(color, &line);
-        }
-    });
-
-    // Command input
-    ui.separator();
-    ui.horizontal(|ui| {
-        ui.colored_label(ACCENT, ">");
-        let response = ui.text_edit_singleline(&mut state.console_input);
-        if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-            submit_console(state);
-        }
-        if ui.button("Run").clicked() {
-            submit_console(state);
-        }
-    });
-}
-
-// =============================================================================
-// Content Browser Tab (egui)
-// =============================================================================
-
-fn draw_content_browser_tab(ui: &mut egui::Ui, state: &mut EditorState) {
-    // Path display
-    ui.horizontal(|ui| {
-        ui.colored_label(ACCENT_DIM, format!("res://{}", state.asset_path));
-        if ui.button("..").clicked() {
-            if let Some(pos) = state.asset_path.rfind('/').or_else(|| state.asset_path.rfind('\\')) {
-                state.asset_path.truncate(pos);
-            }
-        }
-    });
-
-    // Search
-    ui.horizontal(|ui| {
-        ui.label("Search:");
-        ui.text_edit_singleline(&mut state.asset_search);
-    });
-
-    ui.separator();
-
-    // Asset entries
-    egui::ScrollArea::vertical().show(ui, |ui| {
-        let entries = scan_asset_dir(&state.asset_path, &state.asset_search);
-        if entries.is_empty() {
-            let defaults = [
-                ("[D] Models/", CYAN),
-                ("[D] Textures/", GREEN),
-                ("[D] Materials/", ACCENT),
-                ("[D] Audio/", ORANGE),
-                ("[D] Scripts/", MAGENTA),
-                ("[D] Scenes/", YELLOW),
-                ("[D] Shaders/", RED),
-            ];
-            ui.colored_label(TEXT_MUTED, "Default asset structure:");
-            for (name, color) in &defaults {
-                ui.colored_label(*color, *name);
-            }
-        } else {
-            for entry in &entries {
-                let icon = asset_icon(&entry.name, entry.is_dir);
-                let color = if entry.is_dir { YELLOW } else { asset_color(&entry.name) };
-                let label = format!("{} {}", icon, entry.name);
-                if ui.add(egui::Label::new(egui::RichText::new(&label).color(color)).sense(egui::Sense::click())).clicked() {
-                    if entry.is_dir {
-                        state.asset_path = format!("{}/{}", state.asset_path, entry.name);
-                    } else {
-                        state.log(LogLevel::Info, format!("Selected asset: {}", entry.name));
-                    }
-                }
-            }
-        }
-    });
-}
-
-// =============================================================================
-// Profiler Tab (egui)
-// =============================================================================
-
-fn draw_profiler_tab(ui: &mut egui::Ui, state: &mut EditorState) {
-    let fps_color = if state.smooth_fps >= 55.0 { GREEN } else if state.smooth_fps >= 30.0 { YELLOW } else { RED };
-
-    ui.horizontal(|ui| {
-        ui.colored_label(fps_color, format!("FPS: {:.0}", state.smooth_fps));
-        ui.colored_label(TEXT_NORMAL, format!("Frame: {:.2} ms", state.smooth_frame_time));
-    });
-
-    if !state.frame_times.is_empty() {
-        let min = state.frame_times.iter().cloned().fold(f64::MAX, f64::min);
-        let max = state.frame_times.iter().cloned().fold(f64::MIN, f64::max);
-        let avg = state.frame_times.iter().sum::<f64>() / state.frame_times.len() as f64;
-        let p99 = {
-            let mut sorted: Vec<f64> = state.frame_times.iter().cloned().collect();
-            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-            sorted.get((sorted.len() as f64 * 0.99) as usize).copied().unwrap_or(0.0)
-        };
-        ui.colored_label(TEXT_DIM,
-            format!("Min: {:.2}  Avg: {:.2}  P99: {:.2}  Max: {:.2} ms", min, avg, p99, max),
-        );
-    }
-
-    ui.separator();
-
-    // Frame time bar graph
-    let bar_count = state.frame_times.len().min(200);
-    if bar_count > 0 {
-        let graph_h = 60.0;
-        let available_w = ui.available_width();
-        let bar_w = (available_w / bar_count as f32).max(1.0).min(4.0);
-        let start_idx = state.frame_times.len().saturating_sub(bar_count);
-
-        let (rect, _) = ui.allocate_exact_size(egui::vec2(available_w, graph_h), egui::Sense::hover());
-        let painter = ui.painter_at(rect);
-
-        // Background
-        painter.rect_filled(rect, 0.0, BG_BASE);
-
-        // Reference lines
-        let y_60fps = rect.bottom() - (16.67 / 50.0 * graph_h as f64) as f32;
-        let y_30fps = rect.bottom() - (33.33 / 50.0 * graph_h as f64) as f32;
-        painter.line_segment([egui::pos2(rect.left(), y_60fps), egui::pos2(rect.right(), y_60fps)],
-            egui::Stroke::new(1.0, GREEN_DIM));
-        painter.line_segment([egui::pos2(rect.left(), y_30fps), egui::pos2(rect.right(), y_30fps)],
-            egui::Stroke::new(1.0, YELLOW_DIM));
-
-        // Bars
-        for (i, &val) in state.frame_times.iter().skip(start_idx).enumerate() {
-            let bar_h = (val as f32 / 50.0 * graph_h).clamp(1.0, graph_h);
-            let x = rect.left() + i as f32 * bar_w;
-            let color = if val < 16.67 { GREEN } else if val < 33.33 { YELLOW } else { RED };
-            let bar_rect = egui::Rect::from_min_size(
-                egui::pos2(x, rect.bottom() - bar_h),
-                egui::vec2(bar_w.max(1.0) - 0.5, bar_h),
-            );
-            painter.rect_filled(bar_rect, 0.0, color);
-        }
-    }
-
-    ui.colored_label(TEXT_MUTED, format!("Frame: {} | Entities: {} | Bodies: {}",
-        state.frame_count, state.entities.len(), state.engine.physics().body_count()));
-}
-
-// =============================================================================
-// Animation Tab (egui)
-// =============================================================================
-
-fn draw_animation_tab(ui: &mut egui::Ui, state: &mut EditorState) {
-    ui.horizontal(|ui| {
-        if ui.button("|<").on_hover_text("Go to start").clicked() {
-            state.anim_time = 0.0;
-        }
-        let play_icon = if state.anim_playing { "||" } else { "|>" };
-        let play_color = if state.anim_playing { GREEN } else { TEXT_NORMAL };
-        if ui.add(egui::Button::new(egui::RichText::new(play_icon).color(play_color)))
-            .on_hover_text("Play/Pause").clicked() {
-            state.anim_playing = !state.anim_playing;
-        }
-        if ui.button("[]").on_hover_text("Stop").clicked() {
-            state.anim_playing = false;
-            state.anim_time = 0.0;
-        }
-        if ui.button(">|").on_hover_text("Go to end").clicked() {
-            state.anim_time = state.anim_duration;
-        }
-    });
-
-    ui.checkbox(&mut state.anim_loop, "Loop");
-    ui.add(egui::Slider::new(&mut state.anim_time, 0.0..=state.anim_duration).text("Time"));
-    ui.add(egui::DragValue::new(&mut state.anim_duration).speed(0.1).prefix("Duration: "));
-
-    ui.separator();
-    ui.colored_label(TEXT_MUTED, "Keyframes and curves will appear here when animations are loaded.");
-
-    // Tick animation forward if playing
-    if state.anim_playing {
-        let dt = 1.0 / 60.0;
-        state.anim_time += dt;
-        if state.anim_time > state.anim_duration {
-            if state.anim_loop {
-                state.anim_time = 0.0;
-            } else {
-                state.anim_time = state.anim_duration;
-                state.anim_playing = false;
-            }
-        }
-    }
-}
-
-// =============================================================================
-// Viewport (central area with 3D scene info overlay)
-// =============================================================================
-
-fn draw_viewport(ctx: &egui::Context, state: &mut EditorState) {
-    egui::CentralPanel::default()
-        .frame(egui::Frame::none().fill(egui::Color32::TRANSPARENT))
-        .show(ctx, |ui| {
-            let rect = ui.available_rect_before_wrap();
-            let painter = ui.painter_at(rect);
-
-            // Top-left: mode info
-            if state.stats_visible {
-                let mode_text = format!("{} | {} | {} | {}",
-                    state.gizmo_mode.label(),
-                    if state.coord_space == CoordSpace::Local { "Local" } else { "World" },
-                    if state.grid_visible { "Grid" } else { "" },
-                    if state.wireframe_mode { "Wire" } else { "" },
-                );
-                painter.text(
-                    egui::pos2(rect.left() + 8.0, rect.top() + 22.0),
-                    egui::Align2::LEFT_TOP,
-                    &mode_text,
-                    egui::FontId::proportional(11.0),
-                    TEXT_MUTED,
-                );
-            }
-
-            // Top-right: Camera info
-            let cam_text = format!("Camera  yaw:{:.0}  pitch:{:.0}  dist:{:.1}",
-                state.camera_yaw, state.camera_pitch, state.camera_dist);
-            painter.text(
-                egui::pos2(rect.right() - 8.0, rect.top() + 6.0),
-                egui::Align2::RIGHT_TOP,
-                &cam_text,
-                egui::FontId::proportional(11.0),
-                TEXT_MUTED,
-            );
-
-            let tgt_text = format!("Target: ({:.1}, {:.1}, {:.1})",
-                state.camera_target[0], state.camera_target[1], state.camera_target[2]);
-            painter.text(
-                egui::pos2(rect.right() - 8.0, rect.top() + 20.0),
-                egui::Align2::RIGHT_TOP,
-                &tgt_text,
-                egui::FontId::proportional(11.0),
-                TEXT_MUTED,
-            );
-
-            // Bottom center: viewport label
-            let vp_w = rect.width() as u32;
-            let vp_h = rect.height() as u32;
-            let vp_label = format!("3D Viewport | {} x {}", vp_w, vp_h);
-            painter.text(
-                egui::pos2(rect.center().x, rect.bottom() - 18.0),
-                egui::Align2::CENTER_TOP,
-                &vp_label,
-                egui::FontId::proportional(11.0),
-                TEXT_MUTED,
-            );
-
-            // Play state overlay
-            if state.is_playing && !state.is_paused {
-                let sim_text = format!("SIMULATING | {:.2}x | {:.1}s", state.sim_speed, state.total_sim_time);
-                painter.text(
-                    egui::pos2(rect.left() + 8.0, rect.top() + 36.0),
-                    egui::Align2::LEFT_TOP,
-                    &sim_text,
-                    egui::FontId::proportional(12.0),
-                    GREEN,
-                );
-            } else if state.is_paused {
-                let pause_text = format!("PAUSED | {:.1}s", state.total_sim_time);
-                painter.text(
-                    egui::pos2(rect.left() + 8.0, rect.top() + 36.0),
-                    egui::Align2::LEFT_TOP,
-                    &pause_text,
-                    egui::FontId::proportional(12.0),
-                    YELLOW,
-                );
-            }
-
-            // Selected entity indicator (top center)
-            if let Some(idx) = state.selected_entity {
-                if idx < state.entities.len() {
-                    let ent = &state.entities[idx];
-                    let icon_color = ent.entity_type.icon_color();
-                    let label = format!("[{}] {} ({:.1}, {:.1}, {:.1})",
-                        ent.entity_type.icon_letter(), ent.name,
-                        ent.position[0], ent.position[1], ent.position[2]);
-                    // Draw pill background
-                    let galley = painter.layout_no_wrap(label.clone(), egui::FontId::proportional(11.0), icon_color);
-                    let pill_w = galley.size().x + 16.0;
-                    let pill_h = 18.0;
-                    let pill_x = rect.center().x - pill_w * 0.5;
-                    let pill_y = rect.top() + 4.0;
-                    let pill_rect = egui::Rect::from_min_size(
-                        egui::pos2(pill_x, pill_y),
-                        egui::vec2(pill_w, pill_h),
-                    );
-                    painter.rect_filled(pill_rect, 9.0, egui::Color32::from_rgba_premultiplied(18, 18, 22, 200));
-                    painter.rect_stroke(pill_rect, 9u8, egui::Stroke::new(1.0, BORDER), egui::epaint::StrokeKind::Middle);
-                    painter.text(
-                        egui::pos2(pill_x + 8.0, pill_y + 3.0),
-                        egui::Align2::LEFT_TOP,
-                        &label,
-                        egui::FontId::proportional(11.0),
-                        icon_color,
-                    );
-                }
-            }
-
-            // Axis indicator (bottom-left)
-            let ax_x = rect.left() + 30.0;
-            let ax_y = rect.bottom() - 40.0;
-            let axis_len = 18.0;
-            painter.line_segment(
-                [egui::pos2(ax_x, ax_y), egui::pos2(ax_x + axis_len, ax_y)],
-                egui::Stroke::new(2.0, X_COLOR),
-            );
-            painter.text(egui::pos2(ax_x + axis_len + 3.0, ax_y - 5.0), egui::Align2::LEFT_TOP,
-                "X", egui::FontId::proportional(10.0), X_COLOR);
-            painter.line_segment(
-                [egui::pos2(ax_x, ax_y), egui::pos2(ax_x, ax_y - axis_len)],
-                egui::Stroke::new(2.0, Y_COLOR),
-            );
-            painter.text(egui::pos2(ax_x - 5.0, ax_y - axis_len - 12.0), egui::Align2::LEFT_TOP,
-                "Y", egui::FontId::proportional(10.0), Y_COLOR);
-            painter.line_segment(
-                [egui::pos2(ax_x, ax_y), egui::pos2(ax_x - axis_len * 0.6, ax_y + axis_len * 0.5)],
-                egui::Stroke::new(2.0, Z_COLOR),
-            );
-            painter.text(egui::pos2(ax_x - axis_len * 0.6 - 12.0, ax_y + axis_len * 0.5 - 2.0), egui::Align2::LEFT_TOP,
-                "Z", egui::FontId::proportional(10.0), Z_COLOR);
-
-            // Stats overlay (bottom-left)
-            if state.stats_visible {
-                let stats_text = format!("Entities: {} | Bodies: {}",
-                    state.entities.len(),
-                    state.engine.physics().body_count());
-                painter.text(
-                    egui::pos2(rect.left() + 8.0, rect.bottom() - 60.0),
-                    egui::Align2::LEFT_TOP,
-                    &stats_text,
-                    egui::FontId::proportional(11.0),
-                    TEXT_MUTED,
-                );
-            }
-        });
-}
-
-// =============================================================================
-// Status Bar (egui)
-// =============================================================================
-
-fn draw_status_bar(ctx: &egui::Context, state: &EditorState) {
-    egui::TopBottomPanel::bottom("status_bar")
-        .exact_height(18.0)
-        .frame(egui::Frame::none().fill(BG_BASE).inner_margin(egui::Margin::symmetric(4, 1)))
-        .show(ctx, |ui| {
-            ui.horizontal_centered(|ui| {
-                // Status dot
-                let (dot_color, status_text) = if state.is_playing && !state.is_paused {
-                    (ACCENT_BRIGHT, "Playing")
-                } else if state.is_paused {
-                    (YELLOW, "Paused")
-                } else {
-                    (GREEN, "Editing")
-                };
-                let (dot_rect, _) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
-                ui.painter().circle_filled(dot_rect.center(), 4.0, dot_color);
-                ui.colored_label(TEXT_DIM, status_text);
-
-                ui.separator();
-
-                // Scene name
-                let modified = if state.scene_modified { " *" } else { "" };
-                let scene_label = format!("{}{}", state.scene_name, modified);
-                let scene_color = if state.scene_modified { YELLOW } else { TEXT_NORMAL };
-                ui.colored_label(scene_color, &scene_label);
-
-                // Right-aligned stats
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let fps_color = if state.smooth_fps >= 55.0 { GREEN } else if state.smooth_fps >= 30.0 { YELLOW } else { RED };
-                    ui.colored_label(fps_color, format!("{:.0} FPS | {} entities | {} bodies",
-                        state.smooth_fps,
-                        state.entities.len(),
-                        state.engine.physics().body_count(),
-                    ));
-                });
-            });
-        });
-}
-
-// =============================================================================
-// FPS Overlay (egui window)
-// =============================================================================
-
-fn draw_fps_overlay(ctx: &egui::Context, state: &EditorState) {
-    let fps_color = if state.smooth_fps >= 55.0 { GREEN } else if state.smooth_fps >= 30.0 { YELLOW } else { RED };
-
-    egui::Area::new(egui::Id::new("fps_overlay"))
-        .fixed_pos(egui::pos2(6.0, 54.0))
-        .interactable(false)
-        .show(ctx, |ui| {
-            egui::Frame::none()
-                .fill(egui::Color32::from_rgba_premultiplied(18, 18, 22, 180))
-                .rounding(egui::CornerRadius::same(4))
-                .inner_margin(egui::Margin::same(6))
-                .show(ui, |ui| {
-                    ui.colored_label(fps_color, format!("{:.0} FPS", state.smooth_fps));
-                    ui.colored_label(TEXT_DIM, format!("{:.2} ms", state.smooth_frame_time));
-                });
-        });
-}
-
-// =============================================================================
-// Notification Toast (egui)
-// =============================================================================
-
-fn draw_notification(ctx: &egui::Context, state: &EditorState) {
-    if let Some((ref msg, level, start)) = state.notification {
-        let elapsed = start.elapsed().as_secs_f32();
-        let duration = 3.0;
-        if elapsed > duration { return; }
-
-        let alpha = if elapsed < 0.2 { elapsed / 0.2 } else if elapsed > duration - 0.5 { (duration - elapsed) / 0.5 } else { 1.0 };
-        let alpha_u8 = (alpha * 255.0) as u8;
-
-        egui::Area::new(egui::Id::new("notification_toast"))
-            .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-16.0, -36.0))
-            .interactable(false)
-            .show(ctx, |ui| {
-                egui::Frame::none()
-                    .fill(egui::Color32::from_rgba_premultiplied(24, 24, 28, alpha_u8))
-                    .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgba_premultiplied(38, 38, 44, alpha_u8)))
-                    .rounding(egui::CornerRadius::same(4))
-                    .inner_margin(egui::Margin::same(12))
-                    .show(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            let prefix_color = level.color();
-                            ui.colored_label(prefix_color, level.prefix());
-                            ui.colored_label(egui::Color32::from_rgba_premultiplied(180, 180, 188, alpha_u8), msg);
-                        });
-                    });
-            });
-    }
-}
-
-// =============================================================================
-// About / Shortcuts dialogs (egui)
-// =============================================================================
-
-fn draw_about_dialog(ctx: &egui::Context, state: &mut EditorState) {
-    if !state.show_about { return; }
-
-    egui::Window::new("About Genovo Studio")
-        .collapsible(false)
-        .resizable(false)
-        .default_width(380.0)
-        .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
-        .show(ctx, |ui| {
-            ui.colored_label(ACCENT, "GENOVO STUDIO");
-            ui.colored_label(TEXT_DIM, "v1.0");
-            ui.add_space(4.0);
-            ui.label("Professional Game Development Environment");
-            ui.colored_label(TEXT_DIM, "26 engine modules fully linked");
-            ui.add_space(8.0);
-
-            let items = [
-                ("Rendering:", "wgpu 24 (GPU-accelerated)", CYAN),
-                ("UI Render:", "egui (text + shapes)", ACCENT),
-                ("UI State:", "Custom Slate (genovo-ui)", GREEN),
-                ("Physics:", "Custom impulse solver", YELLOW),
-                ("ECS:", "Archetype-based", MAGENTA),
-                ("Audio:", "Software PCM mixer", ORANGE),
-                ("Scripting:", "GenovoScript VM", RED),
-                ("Terrain:", "Procedural heightmap gen", GREEN),
-                ("Procgen:", "BSP dungeon generation", CYAN),
-            ];
-            for (label, value, color) in &items {
-                ui.horizontal(|ui| {
-                    ui.colored_label(TEXT_DIM, *label);
-                    ui.colored_label(*color, *value);
-                });
-            }
-
-            ui.add_space(8.0);
-            ui.separator();
-            ui.colored_label(ACCENT, "genovo.dev");
-            ui.add_space(4.0);
-
-            if ui.button("Close").clicked() {
-                state.show_about = false;
-            }
-        });
-}
-
-fn draw_shortcuts_dialog(ctx: &egui::Context, state: &mut EditorState) {
-    if !state.show_shortcuts { return; }
-
-    egui::Window::new("Keyboard Shortcuts")
-        .collapsible(false)
-        .resizable(false)
-        .default_width(380.0)
-        .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
-        .show(ctx, |ui| {
-            ui.colored_label(ACCENT, "Genovo Studio Shortcuts");
-            ui.add_space(4.0);
-
-            let shortcuts = [
-                ("Ctrl+N", "New Scene"),
-                ("Ctrl+S", "Save Scene"),
-                ("Ctrl+Z", "Undo"),
-                ("Ctrl+Y", "Redo"),
-                ("Ctrl+D", "Duplicate Selected"),
-                ("Delete", "Delete Selected"),
-                ("Q", "Select Tool"),
-                ("W", "Translate Tool"),
-                ("E", "Rotate Tool"),
-                ("R", "Scale Tool"),
-                ("Space", "Play / Pause"),
-                ("F5", "Toggle Play Mode"),
-                ("F", "Focus Selected"),
-                ("G", "Spawn Physics Ball"),
-                ("Up/Down", "Select Prev/Next Entity"),
-                ("Escape", "Deselect / Cancel"),
-            ];
-
-            egui::Grid::new("shortcuts_grid").show(ui, |ui| {
-                for (key, desc) in &shortcuts {
-                    ui.colored_label(ACCENT, *key);
-                    ui.colored_label(TEXT_NORMAL, *desc);
-                    ui.end_row();
-                }
-            });
-
-            ui.add_space(8.0);
-            if ui.button("Close").clicked() {
-                state.show_shortcuts = false;
-            }
-        });
-}
-
-// =============================================================================
 // Application
 // =============================================================================
 
 struct EditorApp {
     gpu: Option<GpuState>,
-    // Audio mixer running flag (keeps background thread alive)
     audio_running: Arc<AtomicBool>,
 }
 
@@ -2879,43 +1760,32 @@ struct GpuState {
     // Full 3D scene renderer
     scene_manager: SceneRenderManager,
 
-    // egui integration
-    egui_ctx: egui::Context,
-    egui_state: egui_winit::State,
-    egui_renderer: egui_wgpu::Renderer,
+    // Custom Slate UI renderer (replaces egui)
+    ui_renderer: UIGpuRenderer,
 
     // Editor state
     editor: EditorState,
-
-    // Track whether dark theme has been applied
-    theme_applied: bool,
 }
 
 impl ApplicationHandler for EditorApp {
     fn resumed(&mut self, el: &ActiveEventLoop) {
-        if self.gpu.is_some() {
-            return;
-        }
+        if self.gpu.is_some() { return; }
 
-        // Create window
         let w = Arc::new(
             el.create_window(
                 Window::default_attributes()
                     .with_title("Genovo Studio \u{2014} Untitled Scene")
                     .with_inner_size(LogicalSize::new(1600, 900))
                     .with_maximized(true),
-            )
-            .unwrap(),
+            ).unwrap(),
         );
 
-        // wgpu setup
         let inst = wgpu::Instance::new(&Default::default());
         let surf = inst.create_surface(w.clone()).unwrap();
         let adap = pollster::block_on(inst.request_adapter(&wgpu::RequestAdapterOptions {
             compatible_surface: Some(&surf),
             ..Default::default()
-        }))
-        .unwrap();
+        })).unwrap();
         let (dev, que) = pollster::block_on(adap.request_device(&Default::default(), None)).unwrap();
         let sz = w.inner_size();
         let cfg = surf.get_default_config(&adap, sz.width.max(1), sz.height.max(1)).unwrap();
@@ -2924,16 +1794,10 @@ impl ApplicationHandler for EditorApp {
         let dev = Arc::new(dev);
         let que = Arc::new(que);
 
-        // Create full 3D SceneRenderManager
-        let scene_manager = SceneRenderManager::new(
-            &dev,
-            cfg.format,
-            wgpu::TextureFormat::Depth32Float,
-        );
-
+        let scene_manager = SceneRenderManager::new(&dev, cfg.format, wgpu::TextureFormat::Depth32Float);
         let dv = make_depth(&dev, sz.width, sz.height);
 
-        // Initialize audio output using engine SoftwareMixer in a background thread
+        // Audio thread
         let audio_running = self.audio_running.clone();
         audio_running.store(true, Ordering::SeqCst);
         std::thread::Builder::new()
@@ -2941,7 +1805,7 @@ impl ApplicationHandler for EditorApp {
             .spawn(move || {
                 use genovo_audio::{AudioMixer, SoftwareMixer};
                 let mut mixer = SoftwareMixer::new(48000, 2, 1024, 32);
-                println!("[Genovo Audio] Mixer thread started: 48kHz stereo, 1024 frames, 32 voices");
+                println!("[Genovo Audio] Mixer thread started: 48kHz stereo");
                 let dt = 1024.0 / 48000.0;
                 while audio_running.load(Ordering::Relaxed) {
                     mixer.update(dt);
@@ -2951,54 +1815,34 @@ impl ApplicationHandler for EditorApp {
             })
             .expect("Failed to spawn audio thread");
 
-        // ---- egui setup ----
-        let egui_ctx = egui::Context::default();
+        // UIGpuRenderer (replaces egui)
+        let ui_renderer = UIGpuRenderer::new(dev.clone(), que.clone(), cfg.format);
 
-        // Apply dark theme FIRST
-        apply_genovo_dark_theme(&egui_ctx);
-
-        let egui_state = egui_winit::State::new(
-            egui_ctx.clone(),
-            egui::ViewportId::ROOT,
-            &w,
-            Some(w.scale_factor() as f32),
-            None,
-            None,
-        );
-
-        // egui renderer -- NO depth attachment (None), 1 sample, no dithering
-        let egui_renderer = egui_wgpu::Renderer::new(&dev, cfg.format, None, 1, false);
-
-        // Engine init
+        // Editor state
         let mut engine = Engine::new(EngineConfig::default()).unwrap();
 
-        // Ground plane (static physics body)
+        // Ground plane
         let gd = physics::RigidBodyDesc {
             body_type: physics::BodyType::Static,
             position: Vec3::ZERO,
             ..Default::default()
         };
         let gh = engine.physics_mut().add_body(&gd).unwrap();
-        let _ = engine.physics_mut().add_collider(
-            gh,
-            &physics::ColliderDesc {
-                shape: physics::CollisionShape::Box { half_extents: Vec3::new(50.0, 0.5, 50.0) },
-                ..Default::default()
-            },
-        );
+        let _ = engine.physics_mut().add_collider(gh, &physics::ColliderDesc {
+            shape: physics::CollisionShape::Box { half_extents: Vec3::new(50.0, 0.5, 50.0) },
+            ..Default::default()
+        });
 
-        // Editor state initialization
         let mut editor = EditorState::new(engine);
         editor.log(LogLevel::System, "Genovo Studio v1.0 -- Professional Game Development Environment");
         editor.log(LogLevel::System, format!("GPU: {} ({:?})", adap.get_info().name, adap.get_info().backend));
-        editor.log(LogLevel::System, format!("Surface format: {:?} | Resolution: {}x{}", cfg.format, sz.width, sz.height));
+        editor.log(LogLevel::System, format!("Surface: {:?} | {}x{}", cfg.format, sz.width, sz.height));
         editor.log(LogLevel::System, "3D Renderer: SceneRenderManager (PBR + Grid)");
         editor.log(LogLevel::System, "Audio: Software mixer thread active");
-        editor.log(LogLevel::System, "UI: egui rendering backend + custom Slate state management");
-        editor.log(LogLevel::System, "Theme: UIStyle::dark() mapped to egui visuals");
+        editor.log(LogLevel::System, "UI: Custom Slate (UIGpuRenderer + bitmap font)");
         editor.log(LogLevel::System, "Type 'help' in console for commands");
 
-        // Spawn default scene entities
+        // Default scene
         let ground_idx = editor.spawn_entity("Ground Plane", EntityType::Mesh);
         editor.entities[ground_idx].scale = [100.0, 1.0, 100.0];
         editor.entities[ground_idx].mesh_shape = MeshShape::Plane;
@@ -3033,9 +1877,9 @@ impl ApplicationHandler for EditorApp {
         editor.scene_modified = false;
 
         println!("[Genovo Studio] GPU: {} ({:?})", adap.get_info().name, adap.get_info().backend);
-        println!("[Genovo Studio] 3D Renderer: SceneRenderManager with PBR pipeline");
-        println!("[Genovo Studio] UI: egui rendering backend (text + shapes) + custom Slate state");
-        println!("[Genovo Studio] Editor ready. {} entities in scene.", editor.entities.len());
+        println!("[Genovo Studio] 3D: SceneRenderManager with PBR pipeline");
+        println!("[Genovo Studio] UI: Custom Slate (UIGpuRenderer + bitmap font)");
+        println!("[Genovo Studio] Editor ready. {} entities.", editor.entities.len());
 
         self.gpu = Some(GpuState {
             window: w,
@@ -3045,22 +1889,13 @@ impl ApplicationHandler for EditorApp {
             config: cfg,
             depth_view: dv,
             scene_manager,
-            egui_ctx,
-            egui_state,
-            egui_renderer,
+            ui_renderer,
             editor,
-            theme_applied: true,
         });
     }
 
     fn window_event(&mut self, el: &ActiveEventLoop, _wid: WindowId, ev: WindowEvent) {
         let Some(s) = self.gpu.as_mut() else { return };
-
-        // Let egui handle the event first
-        let egui_response = s.egui_state.on_window_event(&s.window, &ev);
-        if egui_response.consumed {
-            // egui consumed the event, but we still need to track some state
-        }
 
         match ev {
             WindowEvent::CloseRequested => el.exit(),
@@ -3078,8 +1913,7 @@ impl ApplicationHandler for EditorApp {
 
             WindowEvent::KeyboardInput { event, .. } => {
                 if let PhysicalKey::Code(k) = event.physical_key {
-                    // Handle editor shortcuts (only on press, only if egui doesn't want text)
-                    if event.state == ElementState::Pressed && !s.egui_ctx.wants_keyboard_input() {
+                    if event.state == ElementState::Pressed {
                         let ctrl = s.editor.modifiers.control_key();
 
                         match k {
@@ -3107,20 +1941,35 @@ impl ApplicationHandler for EditorApp {
                             KeyCode::KeyG if !ctrl => { s.editor.spawn_physics_ball(); }
                             KeyCode::ArrowUp if !ctrl => { s.editor.select_prev(); }
                             KeyCode::ArrowDown if !ctrl => { s.editor.select_next(); }
+                            KeyCode::Enter => { submit_console(&mut s.editor); }
                             KeyCode::Escape => {
                                 s.editor.selected_entity = None;
                                 s.editor.renaming_entity = None;
                                 s.editor.show_about = false;
                                 s.editor.show_shortcuts = false;
                             }
-                            _ => {}
+                            KeyCode::Backspace => {
+                                s.editor.console_input.pop();
+                            }
+                            _ => {
+                                // Basic text input for console
+                                if let Some(text) = &event.text {
+                                    let t = text.as_str();
+                                    if !ctrl && t.len() == 1 {
+                                        let ch = t.chars().next().unwrap();
+                                        if ch >= ' ' && ch <= '~' {
+                                            s.editor.console_input.push(ch);
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
 
             WindowEvent::RedrawRequested => {
-                // ---- Frame timing ----
+                // Frame timing
                 let now = Instant::now();
                 let dt = now.duration_since(s.editor.last_frame).as_secs_f32();
                 s.editor.last_frame = now;
@@ -3137,11 +1986,11 @@ impl ApplicationHandler for EditorApp {
                 s.editor.fps_history.push_back(s.editor.fps as f64);
                 if s.editor.fps_history.len() > 512 { s.editor.fps_history.pop_front(); }
 
-                // ---- Update window title ----
+                // Window title
                 let title = format!("Genovo Studio \u{2014} {}{}", s.editor.scene_name, if s.editor.scene_modified { " *" } else { "" });
                 s.window.set_title(&title);
 
-                // ---- Physics step ----
+                // Physics step
                 if s.editor.is_playing && !s.editor.is_paused {
                     let phys_dt = (dt * s.editor.sim_speed).min(1.0 / 30.0);
                     let _ = s.editor.engine.physics_mut().step(phys_dt);
@@ -3149,53 +1998,24 @@ impl ApplicationHandler for EditorApp {
                     s.editor.total_sim_time += phys_dt as f64;
                 }
 
-                // ---- Clear expired notification ----
+                // Notification expiry
                 if let Some((_, _, start)) = &s.editor.notification {
                     if start.elapsed().as_secs_f32() > 3.5 { s.editor.notification = None; }
                 }
 
-                // ---- Sync physics positions ----
                 s.editor.sync_physics_to_entities();
 
-                // ---- egui begin frame ----
-                let raw_input = s.egui_state.take_egui_input(&s.window);
-                s.egui_ctx.begin_pass(raw_input);
+                // --- UIGpuRenderer begin frame ---
+                let screen_size = glam::Vec2::new(s.config.width as f32, s.config.height as f32);
+                s.ui_renderer.begin_frame(screen_size);
 
-                // ---- Draw all editor UI via egui ----
-                draw_editor_ui(&s.egui_ctx, &mut s.editor);
+                // Draw all editor UI
+                draw_editor_ui(&mut s.ui_renderer, &s.editor);
 
-                // ---- egui end frame ----
-                let full_output = s.egui_ctx.end_pass();
-                s.egui_state.handle_platform_output(&s.window, full_output.platform_output);
-
-                let paint_jobs = s.egui_ctx.tessellate(full_output.shapes, full_output.pixels_per_point);
-                let screen_descriptor = egui_wgpu::ScreenDescriptor {
-                    size_in_pixels: [s.config.width, s.config.height],
-                    pixels_per_point: s.window.scale_factor() as f32,
-                };
-
-                // Handle egui texture updates
-                for (id, delta) in &full_output.textures_delta.set {
-                    s.egui_renderer.update_texture(&s.device, &s.queue, *id, delta);
-                }
-                let mut egui_cmd_buffers = s.egui_renderer.update_buffers(
-                    &s.device,
-                    &s.queue,
-                    &mut s.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                        label: Some("egui_update"),
-                    }),
-                    &paint_jobs,
-                    &screen_descriptor,
-                );
-
-                // ---- Build camera from editor orbit parameters ----
+                // --- Build camera ---
                 let yaw_rad = s.editor.camera_yaw.to_radians();
                 let pitch_rad = s.editor.camera_pitch.to_radians();
-                let target = glam::Vec3::new(
-                    s.editor.camera_target[0],
-                    s.editor.camera_target[1],
-                    s.editor.camera_target[2],
-                );
+                let target = glam::Vec3::new(s.editor.camera_target[0], s.editor.camera_target[1], s.editor.camera_target[2]);
                 let aspect = s.config.width as f32 / s.config.height.max(1) as f32;
                 let mut scene_camera = SceneCamera::perspective(
                     glam::Vec3::ZERO, target, glam::Vec3::Y,
@@ -3203,7 +2023,7 @@ impl ApplicationHandler for EditorApp {
                 );
                 scene_camera.orbit(target, yaw_rad, pitch_rad, s.editor.camera_dist);
 
-                // ---- Build scene lights from entities ----
+                // --- Build scene lights ---
                 let mut scene_lights = SceneLights::default_outdoor();
                 scene_lights.point_lights.clear();
                 for ent in &s.editor.entities {
@@ -3219,30 +2039,24 @@ impl ApplicationHandler for EditorApp {
                     }
                 }
 
-                // ---- Submit scene entities to the render manager ----
+                // --- Submit scene entities ---
                 s.scene_manager.clear_queue();
 
-                // Set clear color
                 let t = s.editor.frame_count as f32 * 0.005;
                 let (br, bg, bb) = if s.editor.is_playing && !s.editor.is_paused {
                     let pulse = (t * 2.0).sin().abs() * 0.008;
                     (0.06 + pulse as f64, 0.06_f64, 0.08 + pulse as f64)
-                } else {
-                    (0.06_f64, 0.06, 0.08)
-                };
+                } else { (0.06_f64, 0.06, 0.08) };
                 s.scene_manager.set_clear_color([br, bg, bb, 1.0]);
 
-                // Grid
                 if s.editor.grid_visible {
                     s.scene_manager.set_grid_enabled(&s.device, true);
                 } else {
                     s.scene_manager.set_grid_enabled(&s.device, false);
                 }
 
-                // Submit each entity
                 for ent in &s.editor.entities {
                     if !ent.visible { continue; }
-
                     let mesh_id = match ent.entity_type {
                         EntityType::Mesh => match ent.mesh_shape {
                             MeshShape::Cube => s.scene_manager.builtin_cube,
@@ -3258,7 +2072,6 @@ impl ApplicationHandler for EditorApp {
                         EntityType::Audio => s.scene_manager.builtin_sphere,
                         EntityType::Empty => None,
                     };
-
                     let material_id = match ent.entity_type {
                         EntityType::Mesh => s.scene_manager.builtin_material_default,
                         EntityType::Light => s.scene_manager.builtin_material_gold,
@@ -3267,93 +2080,40 @@ impl ApplicationHandler for EditorApp {
                         EntityType::Audio => s.scene_manager.builtin_material_green,
                         EntityType::Empty => None,
                     };
-
                     if let (Some(mesh), Some(mat)) = (mesh_id, material_id) {
                         let pos = glam::Vec3::new(ent.position[0], ent.position[1], ent.position[2]);
                         let scl = glam::Vec3::new(ent.scale[0], ent.scale[1], ent.scale[2]);
-
                         let render_scale = match ent.entity_type {
                             EntityType::Light | EntityType::Camera |
-                            EntityType::ParticleSystem | EntityType::Audio => {
-                                glam::Vec3::new(0.3, 0.3, 0.3)
-                            }
+                            EntityType::ParticleSystem | EntityType::Audio => glam::Vec3::new(0.3, 0.3, 0.3),
                             _ => scl,
                         };
-
                         let transform = glam::Mat4::from_scale_rotation_translation(
                             render_scale,
-                            glam::Quat::from_euler(
-                                glam::EulerRot::XYZ,
-                                ent.rotation[0].to_radians(),
-                                ent.rotation[1].to_radians(),
-                                ent.rotation[2].to_radians(),
-                            ),
+                            glam::Quat::from_euler(glam::EulerRot::XYZ, ent.rotation[0].to_radians(), ent.rotation[1].to_radians(), ent.rotation[2].to_radians()),
                             pos,
                         );
-
                         s.scene_manager.submit(mesh, mat, transform);
                     }
                 }
 
-                // ---- GPU Render ----
+                // --- GPU Render ---
                 let Ok(out) = s.surface.get_current_texture() else {
                     s.window.request_redraw();
                     return;
                 };
                 let view = out.texture.create_view(&Default::default());
 
-                // Pass 1: Render full 3D scene via SceneRenderManager
-                let scene_cmd = s.scene_manager.render(
-                    &s.device,
-                    &s.queue,
-                    &view,
-                    &s.depth_view,
-                    &scene_camera,
-                    &scene_lights,
-                );
+                // Pass 1: 3D scene
+                let scene_cmd = s.scene_manager.render(&s.device, &s.queue, &view, &s.depth_view, &scene_camera, &scene_lights);
 
-                // Pass 2: egui UI overlay (no depth, alpha blending)
-                let mut egui_enc = s.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("egui_render"),
-                });
+                // Pass 2: UI overlay via UIGpuRenderer
+                let mut ui_enc = s.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("ui_render") });
+                s.ui_renderer.end_frame(&mut ui_enc, &view);
 
-                {
-                    let render_pass = egui_enc.begin_render_pass(&wgpu::RenderPassDescriptor {
-                        label: Some("egui_pass"),
-                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                            view: &view,
-                            resolve_target: None,
-                            ops: wgpu::Operations {
-                                load: wgpu::LoadOp::Load, // Load existing 3D scene
-                                store: wgpu::StoreOp::Store,
-                            },
-                        })],
-                        depth_stencil_attachment: None, // No depth for UI overlay
-                        ..Default::default()
-                    });
-                    // egui-wgpu 0.31 requires RenderPass<'static>
-                    let mut render_pass = render_pass.forget_lifetime();
-
-                    s.egui_renderer.render(
-                        &mut render_pass,
-                        &paint_jobs,
-                        &screen_descriptor,
-                    );
-                }
-
-                // Free egui textures
-                for id in &full_output.textures_delta.free {
-                    s.egui_renderer.free_texture(id);
-                }
-
-                // Submit both command buffers: 3D scene first, then egui overlay
-                s.queue.submit(
-                    std::iter::once(scene_cmd)
-                        .chain(egui_cmd_buffers.drain(..))
-                        .chain(std::iter::once(egui_enc.finish()))
-                );
+                // Submit: 3D first, then UI
+                s.queue.submit([scene_cmd, ui_enc.finish()]);
                 out.present();
-
                 s.window.request_redraw();
             }
 
@@ -3371,8 +2131,7 @@ fn main() {
 
     println!("[Genovo Studio] Starting Genovo Studio v1.0...");
     println!("[Genovo Studio] Professional Game Development Environment");
-    println!("[Genovo Studio] UI: egui rendering backend + custom Slate state management");
-    println!("[Genovo Studio] Theme: UIStyle::dark() mapped to egui visuals");
+    println!("[Genovo Studio] UI: Custom Slate (UIGpuRenderer + bitmap font)");
 
     let el = EventLoop::new().unwrap();
     el.set_control_flow(ControlFlow::Poll);

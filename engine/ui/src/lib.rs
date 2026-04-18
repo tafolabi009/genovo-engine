@@ -18,6 +18,7 @@
 //! for DPI scaling when submitting GPU commands.
 
 pub mod animation;
+pub mod bitmap_font;
 pub mod brush_system;
 pub mod core;
 pub mod data_binding;
