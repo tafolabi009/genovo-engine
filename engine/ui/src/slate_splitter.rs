@@ -561,72 +561,71 @@ impl Splitter {
         }
 
         match event {
-            UIEvent::MouseMove { x, y, .. } => {
-                let pos = Vec2::new(*x, *y);
-                let hit_rects = self.divider_hit_rects(rect);
+            UIEvent::Hover { position } | UIEvent::DragMove { position, .. } => {
+                let pos = *position;
 
-                // Handle dragging.
-                for (i, divider) in self.dividers.iter_mut().enumerate() {
-                    if divider.dragging {
-                        let mouse_pos = match self.direction {
-                            SplitterDirection::Horizontal => *x,
-                            SplitterDirection::Vertical => *y,
-                        };
-                        let delta_mouse = mouse_pos - divider.drag_start_pos;
+                // Handle dragging -- find the active divider index first.
+                let dragging_idx = self.dividers.iter().position(|d| d.dragging);
+                if let Some(i) = dragging_idx {
+                    let mouse_pos = match self.direction {
+                        SplitterDirection::Horizontal => pos.x,
+                        SplitterDirection::Vertical => pos.y,
+                    };
+                    let delta_mouse = mouse_pos - self.dividers[i].drag_start_pos;
 
-                        let total_size = match self.direction {
-                            SplitterDirection::Horizontal => rect.width(),
-                            SplitterDirection::Vertical => rect.height(),
-                        };
-                        let divider_total =
-                            self.dividers.len() as f32 * self.style.thickness;
-                        let available = (total_size - divider_total).max(1.0);
-                        let delta_ratio = delta_mouse / available;
+                    let total_size = match self.direction {
+                        SplitterDirection::Horizontal => rect.width(),
+                        SplitterDirection::Vertical => rect.height(),
+                    };
+                    let divider_count = self.dividers.len();
+                    let divider_total = divider_count as f32 * self.style.thickness;
+                    let available = (total_size - divider_total).max(1.0);
+                    let delta_ratio = delta_mouse / available;
 
-                        let new_left = (divider.drag_start_ratio_left + delta_ratio).max(0.01);
-                        let new_right = (divider.drag_start_ratio_right - delta_ratio).max(0.01);
+                    let new_left = (self.dividers[i].drag_start_ratio_left + delta_ratio).max(0.01);
+                    let new_right = (self.dividers[i].drag_start_ratio_right - delta_ratio).max(0.01);
 
-                        // Apply constraints.
-                        let left_min = self.panels[i].constraints.min_size / available;
-                        let right_min = self.panels[i + 1].constraints.min_size / available;
-                        let left_max = self.panels[i].constraints.max_size / available;
-                        let right_max = self.panels[i + 1].constraints.max_size / available;
+                    // Apply constraints.
+                    let left_min = self.panels[i].constraints.min_size / available;
+                    let right_min = self.panels[i + 1].constraints.min_size / available;
+                    let left_max = self.panels[i].constraints.max_size / available;
+                    let right_max = self.panels[i + 1].constraints.max_size / available;
 
-                        let clamped_left = new_left.clamp(left_min, left_max.min(1.0));
-                        let clamped_right = new_right.clamp(right_min, right_max.min(1.0));
+                    let clamped_left = new_left.clamp(left_min, left_max.min(1.0));
+                    let clamped_right = new_right.clamp(right_min, right_max.min(1.0));
 
-                        // Check collapsible.
-                        if self.panels[i].constraints.collapsible
-                            && new_left * available < self.panels[i].constraints.collapse_threshold
-                        {
-                            self.panels[i].collapsed = true;
-                            self.panels[i].ratio = 0.01;
-                            self.panels[i + 1].ratio = divider.drag_start_ratio_left
-                                + divider.drag_start_ratio_right
-                                - 0.01;
-                        } else if self.panels[i + 1].constraints.collapsible
-                            && new_right * available
-                                < self.panels[i + 1].constraints.collapse_threshold
-                        {
-                            self.panels[i + 1].collapsed = true;
-                            self.panels[i + 1].ratio = 0.01;
-                            self.panels[i].ratio = divider.drag_start_ratio_left
-                                + divider.drag_start_ratio_right
-                                - 0.01;
-                        } else {
-                            self.panels[i].collapsed = false;
-                            self.panels[i + 1].collapsed = false;
-                            self.panels[i].ratio = clamped_left;
-                            self.panels[i + 1].ratio = clamped_right;
-                        }
-
-                        self.normalize_ratios();
-                        self.resized = true;
-                        return EventReply::Handled;
+                    // Check collapsible.
+                    if self.panels[i].constraints.collapsible
+                        && new_left * available < self.panels[i].constraints.collapse_threshold
+                    {
+                        self.panels[i].collapsed = true;
+                        self.panels[i].ratio = 0.01;
+                        self.panels[i + 1].ratio = self.dividers[i].drag_start_ratio_left
+                            + self.dividers[i].drag_start_ratio_right
+                            - 0.01;
+                    } else if self.panels[i + 1].constraints.collapsible
+                        && new_right * available
+                            < self.panels[i + 1].constraints.collapse_threshold
+                    {
+                        self.panels[i + 1].collapsed = true;
+                        self.panels[i + 1].ratio = 0.01;
+                        self.panels[i].ratio = self.dividers[i].drag_start_ratio_left
+                            + self.dividers[i].drag_start_ratio_right
+                            - 0.01;
+                    } else {
+                        self.panels[i].collapsed = false;
+                        self.panels[i + 1].collapsed = false;
+                        self.panels[i].ratio = clamped_left;
+                        self.panels[i + 1].ratio = clamped_right;
                     }
+
+                    self.normalize_ratios();
+                    self.resized = true;
+                    return EventReply::Handled;
                 }
 
                 // Update hover states.
+                let hit_rects = self.divider_hit_rects(rect);
                 let mut any_hovered = false;
                 for (i, divider) in self.dividers.iter_mut().enumerate() {
                     divider.hovered = i < hit_rects.len() && hit_rects[i].contains(pos);
@@ -640,20 +639,18 @@ impl Splitter {
                 }
             }
 
-            UIEvent::MouseDown { x, y, button, .. } => {
+            UIEvent::Click { position, button, .. } => {
                 if *button != MouseButton::Left {
                     return EventReply::Unhandled;
                 }
 
-                let pos = Vec2::new(*x, *y);
+                let pos = *position;
                 let hit_rects = self.divider_hit_rects(rect);
 
                 for (i, hr) in hit_rects.iter().enumerate() {
-                    if hr.contains(pos) {
-                        let divider = &mut self.dividers[i];
-
+                    if hr.contains(pos) && i < self.dividers.len() {
                         // Double-click detection.
-                        let time_since_last = self.current_time - divider.last_click_time;
+                        let time_since_last = self.current_time - self.dividers[i].last_click_time;
                         if time_since_last < self.double_click_interval
                             && time_since_last > 0.0
                         {
@@ -664,25 +661,29 @@ impl Splitter {
                             self.panels[i + 1].collapsed = false;
                             self.normalize_ratios();
                             self.resized = true;
-                            divider.last_click_time = -1.0;
+                            self.dividers[i].last_click_time = -1.0;
                             return EventReply::Handled;
                         }
 
-                        divider.last_click_time = self.current_time;
-                        divider.dragging = true;
-                        divider.drag_start_pos = match self.direction {
-                            SplitterDirection::Horizontal => *x,
-                            SplitterDirection::Vertical => *y,
+                        self.dividers[i].last_click_time = self.current_time;
+                        self.dividers[i].dragging = true;
+                        self.dividers[i].drag_start_pos = match self.direction {
+                            SplitterDirection::Horizontal => pos.x,
+                            SplitterDirection::Vertical => pos.y,
                         };
-                        divider.drag_start_ratio_left = self.panels[i].ratio;
-                        divider.drag_start_ratio_right = self.panels[i + 1].ratio;
+                        self.dividers[i].drag_start_ratio_left = self.panels[i].ratio;
+                        self.dividers[i].drag_start_ratio_right = self.panels[i + 1].ratio;
                         return EventReply::CaptureMouse;
                     }
                 }
             }
 
-            UIEvent::MouseUp { button, .. } => {
-                if *button == MouseButton::Left {
+            UIEvent::MouseUp { .. } | UIEvent::DragEnd { .. } => {
+                let is_left = match event {
+                    UIEvent::MouseUp { button, .. } => *button == MouseButton::Left,
+                    _ => true,
+                };
+                if is_left {
                     for divider in &mut self.dividers {
                         if divider.dragging {
                             divider.dragging = false;

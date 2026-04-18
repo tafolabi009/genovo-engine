@@ -645,8 +645,8 @@ impl Scrollbar {
         self.scroll_changed = false;
 
         match event {
-            UIEvent::MouseMove { x, y, .. } => {
-                let pos = Vec2::new(*x, *y);
+            UIEvent::Hover { position } => {
+                let pos = *position;
                 let track = self.track_rect(rect);
                 let thumb = self.thumb_rect(rect);
 
@@ -658,10 +658,19 @@ impl Scrollbar {
 
                 self.auto_hide.hovered = self.track_hovered;
 
+                if self.track_hovered != was_track_hovered
+                    || self.thumb_hovered != was_thumb_hovered
+                {
+                    return EventReply::Handled;
+                }
+            }
+
+            UIEvent::DragMove { position, .. } => {
                 if self.drag.dragging {
+                    let track = self.track_rect(rect);
                     let mouse_pos = match self.orientation {
-                        ScrollOrientation::Vertical => *y,
-                        ScrollOrientation::Horizontal => *x,
+                        ScrollOrientation::Vertical => position.y,
+                        ScrollOrientation::Horizontal => position.x,
                     };
                     let delta_mouse = mouse_pos - self.drag.drag_start_mouse;
 
@@ -687,19 +696,13 @@ impl Scrollbar {
 
                     return EventReply::Handled;
                 }
-
-                if self.track_hovered != was_track_hovered
-                    || self.thumb_hovered != was_thumb_hovered
-                {
-                    return EventReply::Handled;
-                }
             }
 
-            UIEvent::MouseDown { x, y, button, .. } => {
+            UIEvent::Click { position, button, .. } => {
                 if *button != MouseButton::Left {
                     return EventReply::Unhandled;
                 }
-                let pos = Vec2::new(*x, *y);
+                let pos = *position;
                 let track = self.track_rect(rect);
                 let thumb = self.thumb_rect(rect);
 
@@ -707,20 +710,16 @@ impl Scrollbar {
                     // Start dragging the thumb.
                     self.drag.dragging = true;
                     self.drag.drag_start_mouse = match self.orientation {
-                        ScrollOrientation::Vertical => *y,
-                        ScrollOrientation::Horizontal => *x,
+                        ScrollOrientation::Vertical => pos.y,
+                        ScrollOrientation::Horizontal => pos.x,
                     };
                     self.drag.drag_start_offset = self.scroll_offset;
                     return EventReply::CaptureMouse;
                 } else if track.contains(pos) {
                     // Click on track -> page up/down.
                     let click_pos = match self.orientation {
-                        ScrollOrientation::Vertical => *y - track.min.y,
-                        ScrollOrientation::Horizontal => *x - track.min.x,
-                    };
-                    let track_len = match self.orientation {
-                        ScrollOrientation::Vertical => track.height(),
-                        ScrollOrientation::Horizontal => track.width(),
+                        ScrollOrientation::Vertical => pos.y - track.min.y,
+                        ScrollOrientation::Horizontal => pos.x - track.min.x,
                     };
                     let thumb_center = {
                         let tr = self.thumb_rect(rect);
@@ -750,13 +749,10 @@ impl Scrollbar {
                 }
             }
 
-            UIEvent::MouseWheel { x, y, delta, .. } => {
-                let pos = Vec2::new(*x, *y);
-                if rect.contains(pos) || self.track_hovered {
-                    let scroll_amount = -delta * self.wheel_scroll_amount;
-                    self.scroll_by(scroll_amount);
-                    return EventReply::Handled;
-                }
+            UIEvent::Scroll { delta, .. } => {
+                let scroll_amount = -delta.y * self.wheel_scroll_amount;
+                self.scroll_by(scroll_amount);
+                return EventReply::Handled;
             }
 
             _ => {}
@@ -937,17 +933,14 @@ impl ScrollRegion {
         }
 
         // Mouse wheel in content area.
-        if let UIEvent::MouseWheel { x, y, delta, .. } = event {
-            let pos = Vec2::new(*x, *y);
-            if layout.content.contains(pos) {
-                if self.enable_vertical {
-                    self.vertical.scroll_by(-delta * self.vertical.wheel_scroll_amount);
-                    return EventReply::Handled;
-                }
-                if self.enable_horizontal {
-                    self.horizontal.scroll_by(-delta * self.horizontal.wheel_scroll_amount);
-                    return EventReply::Handled;
-                }
+        if let UIEvent::Scroll { delta, .. } = event {
+            if self.enable_vertical {
+                self.vertical.scroll_by(-delta.y * self.vertical.wheel_scroll_amount);
+                return EventReply::Handled;
+            }
+            if self.enable_horizontal {
+                self.horizontal.scroll_by(-delta.x * self.horizontal.wheel_scroll_amount);
+                return EventReply::Handled;
             }
         }
 

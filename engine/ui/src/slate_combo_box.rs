@@ -779,27 +779,27 @@ impl SlateComboBox {
         }
 
         match event {
-            UIEvent::MouseMove { x, y, .. } => {
-                let pos = Vec2::new(*x, *y);
+            UIEvent::Hover { position } => {
+                let pos = *position;
                 self.button_hovered = button.contains(pos);
                 if self.button_hovered {
                     return EventReply::Handled;
                 }
             }
 
-            UIEvent::MouseDown { x, y, button: btn, .. } => {
+            UIEvent::Click { position, button: btn, .. } => {
                 if *btn != MouseButton::Left {
                     return EventReply::Unhandled;
                 }
-                let pos = Vec2::new(*x, *y);
+                let pos = *position;
                 if button.contains(pos) {
                     self.toggle();
                     return EventReply::Handled;
                 }
             }
 
-            UIEvent::KeyDown { key, .. } => {
-                if self.focused {
+            UIEvent::KeyInput { key, pressed, .. } => {
+                if *pressed && self.focused {
                     match key {
                         KeyCode::Space | KeyCode::Enter => {
                             self.open();
@@ -841,23 +841,23 @@ impl SlateComboBox {
         content_rect: Rect,
     ) -> EventReply {
         match event {
-            UIEvent::MouseMove { x, y, .. } => {
-                let pos = Vec2::new(*x, *y);
+            UIEvent::Hover { position } => {
+                let pos = *position;
                 self.button_hovered = button_rect.contains(pos);
 
                 if content_rect.contains(pos) {
-                    self.hovered_index = self.item_at_y(*y, content_rect);
+                    self.hovered_index = self.item_at_y(pos.y, content_rect);
                 } else {
                     self.hovered_index = None;
                 }
                 EventReply::Handled
             }
 
-            UIEvent::MouseDown { x, y, button, .. } => {
+            UIEvent::Click { position, button, .. } => {
                 if *button != MouseButton::Left {
                     return EventReply::Handled;
                 }
-                let pos = Vec2::new(*x, *y);
+                let pos = *position;
 
                 if button_rect.contains(pos) {
                     self.close();
@@ -865,7 +865,7 @@ impl SlateComboBox {
                 }
 
                 if content_rect.contains(pos) {
-                    if let Some(fi) = self.item_at_y(*y, content_rect) {
+                    if let Some(fi) = self.item_at_y(pos.y, content_rect) {
                         if fi < self.filtered_indices.len() {
                             let actual_index = self.filtered_indices[fi];
                             self.select(actual_index);
@@ -882,17 +882,13 @@ impl SlateComboBox {
                 EventReply::Handled
             }
 
-            UIEvent::MouseWheel { delta, x, y, .. } => {
-                let pos = Vec2::new(*x, *y);
-                if dropdown_rect.contains(pos) {
-                    self.scroll_offset = (self.scroll_offset - delta * 30.0)
-                        .clamp(0.0, self.max_scroll(content_rect.height()));
-                    return EventReply::Handled;
-                }
+            UIEvent::Scroll { delta, .. } => {
+                self.scroll_offset = (self.scroll_offset - delta.y * 30.0)
+                    .clamp(0.0, self.max_scroll(content_rect.height()));
                 EventReply::Handled
             }
 
-            UIEvent::KeyDown { key, .. } => {
+            UIEvent::KeyInput { key, pressed, .. } if *pressed => {
                 match key {
                     KeyCode::Escape => {
                         self.close();
@@ -968,9 +964,9 @@ impl SlateComboBox {
                 EventReply::Handled
             }
 
-            UIEvent::TextInput { text, .. } => {
+            UIEvent::TextInput { character } => {
                 if self.searchable {
-                    self.search_text.push_str(text);
+                    self.search_text.push(*character);
                     self.rebuild_filter();
                     self.keyboard_index = if self.filtered_indices.is_empty() {
                         None

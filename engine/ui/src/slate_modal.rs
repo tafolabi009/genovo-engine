@@ -759,8 +759,8 @@ impl ModalDialog {
         }
 
         match event {
-            UIEvent::MouseMove { x, y, .. } => {
-                let pos = Vec2::new(*x, *y);
+            UIEvent::Hover { position } => {
+                let pos = *position;
                 let dialog_rect = self.dialog_rect();
                 let button_rects = self.button_rects(dialog_rect);
 
@@ -773,12 +773,12 @@ impl ModalDialog {
                 EventReply::Handled // Trap all mouse events.
             }
 
-            UIEvent::MouseDown { x, y, button, .. } => {
+            UIEvent::Click { position, button, .. } => {
                 if *button != MouseButton::Left {
                     return EventReply::Handled;
                 }
 
-                let pos = Vec2::new(*x, *y);
+                let pos = *position;
                 let dialog_rect = self.dialog_rect();
                 let button_rects = self.button_rects(dialog_rect);
 
@@ -811,12 +811,12 @@ impl ModalDialog {
                 EventReply::Handled
             }
 
-            UIEvent::MouseUp { x, y, button, .. } => {
+            UIEvent::MouseUp { position, button } => {
                 if *button != MouseButton::Left {
                     return EventReply::Handled;
                 }
 
-                let pos = Vec2::new(*x, *y);
+                let pos = *position;
                 let dialog_rect = self.dialog_rect();
                 let button_rects = self.button_rects(dialog_rect);
 
@@ -840,17 +840,19 @@ impl ModalDialog {
                 EventReply::Handled
             }
 
-            UIEvent::KeyDown { key, modifiers, .. } => {
-                self.handle_key(*key, *modifiers)
+            UIEvent::KeyInput { key, pressed, modifiers } => {
+                if *pressed {
+                    self.handle_key(*key, *modifiers)
+                } else {
+                    EventReply::Handled
+                }
             }
 
-            UIEvent::TextInput { text, .. } => {
+            UIEvent::TextInput { character } => {
                 if self.has_input && self.input_focused {
-                    for ch in text.chars() {
-                        if !ch.is_control() {
-                            self.input_text.insert(self.input_cursor, ch);
-                            self.input_cursor += ch.len_utf8();
-                        }
+                    if !character.is_control() {
+                        self.input_text.insert(self.input_cursor, *character);
+                        self.input_cursor += character.len_utf8();
                     }
                     return EventReply::Handled;
                 }

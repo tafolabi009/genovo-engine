@@ -744,21 +744,25 @@ impl ContextMenu {
         }
 
         match event {
-            UIEvent::MouseMove { x, y, .. } => {
-                let pos = Vec2::new(*x, *y);
-                self.handle_mouse_move(pos)
+            UIEvent::Hover { position } => {
+                self.handle_mouse_move(*position)
             }
 
-            UIEvent::MouseDown { x, y, button, .. } => {
-                let pos = Vec2::new(*x, *y);
+            UIEvent::Click { position, button, .. } => {
                 if *button == MouseButton::Left || *button == MouseButton::Right {
-                    self.handle_mouse_click(pos)
+                    self.handle_mouse_click(*position)
                 } else {
                     EventReply::Unhandled
                 }
             }
 
-            UIEvent::KeyDown { key, modifiers, .. } => self.handle_key(*key, *modifiers),
+            UIEvent::KeyInput { key, pressed, modifiers } => {
+                if *pressed {
+                    self.handle_key(*key, *modifiers)
+                } else {
+                    EventReply::Handled
+                }
+            }
 
             _ => EventReply::Unhandled,
         }
@@ -868,18 +872,24 @@ impl ContextMenu {
 
             KeyCode::ArrowRight => {
                 // Open submenu.
-                if let Some(level) = self.levels.last() {
-                    if let Some(idx) = level.hovered {
+                let should_open = self.levels.last().and_then(|level| {
+                    level.hovered.and_then(|idx| {
                         if matches!(level.items.get(idx), Some(ContextMenuItem::SubMenu { .. })) {
-                            // Force open submenu immediately.
-                            let last = self.levels.len() - 1;
-                            self.levels[last].hover_time = SUBMENU_DELAY + 1.0;
-                            self.try_open_submenu();
-                            // Select first item in new submenu.
-                            if let Some(new_level) = self.levels.last_mut() {
-                                new_level.hovered = self.first_interactive_index(&new_level.items);
-                            }
+                            Some(())
+                        } else {
+                            None
                         }
+                    })
+                }).is_some();
+
+                if should_open {
+                    let last = self.levels.len() - 1;
+                    self.levels[last].hover_time = SUBMENU_DELAY + 1.0;
+                    self.try_open_submenu();
+                    // Select first item in new submenu.
+                    if let Some(new_level) = self.levels.last_mut() {
+                        let first = new_level.items.iter().position(|i| i.is_interactive());
+                        new_level.hovered = first;
                     }
                 }
                 EventReply::Handled

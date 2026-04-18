@@ -25,15 +25,21 @@ pub mod data_binding;
 pub mod dock_system;
 pub mod drag_drop;
 pub mod editor_widgets;
+pub mod font_system;
 pub mod gpu_renderer;
 pub mod layout;
 pub mod render_commands;
 pub mod retained_widgets;
 pub mod rich_text;
 pub mod slate_accessibility;
+pub mod slate_color_picker_full;
+pub mod slate_combo_box;
 pub mod slate_complex_widgets;
+pub mod slate_context_menu;
+pub mod slate_curve_editor_full;
 pub mod slate_debug;
 pub mod slate_input;
+pub mod slate_modal;
 pub mod slate_multiwindow;
 pub mod slate_notifications;
 pub mod slate_animation;
@@ -41,6 +47,8 @@ pub mod slate_layout;
 pub mod slate_performance;
 pub mod slate_platform;
 pub mod slate_property_editor;
+pub mod slate_scrollbar;
+pub mod slate_splitter;
 pub mod slate_text;
 pub mod slate_widgets;
 pub mod style;
@@ -189,6 +197,37 @@ pub use slate_platform::{
     PlatformContext, SystemInfo, WindowEvent, WindowId as SlateWindowId,
     WindowManager as SlateWindowManager, WindowProperties, WindowState as SlateWindowState,
     WindowType,
+};
+pub use font_system::{
+    CachedGlyph, FontAtlasBuilder, FontAtlasPage, FontDatabase, FontFace, FontFaceBuilder,
+    FontId, FontSize, FontStyle as FontFaceStyle, FontSystem, FontTextAlignment,
+    FontTextShaper, FontWeight, GlyphCache, GlyphKey, GlyphMetrics, KerningPair,
+    LineMetrics, ShapedGlyph, TextLine, TextMeasurer,
+    TextMeasurement as FontTextMeasurement, LineMeasurement,
+};
+pub use slate_scrollbar::{
+    AutoHideState, ScrollOrientation, ScrollRegion, ScrollRegionLayout, ScrollSpring,
+    Scrollbar, ScrollbarAppearance, ScrollbarVisibility,
+};
+pub use slate_context_menu::{
+    ContextMenu, ContextMenuManager, ContextMenuItem, ContextMenuStyle, MenuActionId,
+};
+pub use slate_modal::{
+    ModalButton, ModalDialog as SlateModalDialog, ModalDialogIcon, ModalDialogResult,
+    ModalDialogStack, ModalDialogStyle,
+};
+pub use slate_splitter::{
+    PanelConstraints, Splitter, SplitterCursor, SplitterDirection, SplitterStyle, SplitPanel,
+};
+pub use slate_combo_box::{
+    ComboBoxItem, ComboBoxStyle, SlateComboBox as FullComboBox,
+};
+pub use slate_color_picker_full::{
+    ColorPickerLayout, ColorSliderMode, ColorSpace, FullColorPicker,
+};
+pub use slate_curve_editor_full::{
+    CurveData, CurveEditorStyle, CurveKeyTangentMode, CurveSelection, FullCurveEditor,
+    FullCurveKeyframe, KeyRef, ViewTransform,
 };
 
 // ---------------------------------------------------------------------------
